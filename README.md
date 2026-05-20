@@ -209,6 +209,10 @@ The tool refuses to edit if:
 - `old_text` is missing
 - `old_text` appears more than once
 
+For indentation-sensitive files such as Python code, the agent is instructed to match complete lines or complete code blocks including leading whitespace. This reduces the risk of moving statements into the wrong scope during partial edits.
+
+After code edits, the agent should verify the change with a syntax check, test command, or by reading the edited file again.
+
 ## Output Limiting
 
 Tool outputs are limited to avoid sending too much data back to the model.

@@ -42,6 +42,11 @@ File editing rules:
 - The `old_text` must match the file content exactly.
 - Prefer small, targeted edits instead of rewriting large files.
 - After editing, verify the change with `read_file`.
+- When editing Python or indentation-sensitive files, match and replace complete lines or complete code blocks, including leading whitespace.
+- Do not match only a small fragment such as `return result` if indentation matters.
+- Preserve indentation unless the task explicitly requires changing it.
+- After editing code, verify the change by running a relevant syntax check or test command when available.
+- If no test command is available, use `read_file` to inspect the edited section.
 
 Behavior:
 - Prefer small, safe steps.

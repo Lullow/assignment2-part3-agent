@@ -58,6 +58,22 @@ def edit_file_section(path: str, old_text: str, new_text: str) -> ToolResult:
         error=f"Path is not a file: {path}",
       )
 
+
+    # For Python files, require edits to include complete lines or code blocks.
+    # This helps avoid indentation bugs where a small fragment like "return result"
+    # is replaced and accidentally moved into the wrong scope.
+    if requested_path.suffix == ".py" and "\n" not in old_text:
+      return ToolResult(
+        success=False,
+        tool_name="edit_file_section",
+        output="",
+        error=(
+          "Python edits must replace complete lines or code blocks, "
+          "including indentation."
+        ),
+      )
+
+
     # Read the file content before replacing text.
     content = requested_path.read_text(encoding="utf-8")
 
