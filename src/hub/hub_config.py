@@ -2,12 +2,21 @@ import os
 from dotenv import load_dotenv
 
 
+# Load local environment variables from .env during development.
+# In production, these values can instead come from the runtime environment.
 load_dotenv()
 
 
+# Remove trailing slash so endpoint paths can be joined consistently.
 HUB_BASE_URL = os.getenv("HUB_BASE_URL", "").rstrip("/")
+
+# Secrets should be read from environment variables, never hardcoded.
 HUB_PASSWORD = os.getenv("HUB_PASSWORD", "")
+
+# Default agent name used when no custom name is provided.
 HUB_AGENT_NAME = os.getenv("HUB_AGENT_NAME", "lullo-swe-agent")
+
+# How often the agent polls the hub for new tasks.
 HUB_POLL_INTERVAL_SECONDS = float(os.getenv("HUB_POLL_INTERVAL_SECONDS", "1.2"))
 
 
