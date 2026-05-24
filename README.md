@@ -22,6 +22,8 @@ The agent can:
 - Connect to a shared HTTP hub in safe hub mode
 - Respond only to direct mentions in the hub
 - Run the hub loop in dry-run mode before posting live responses
+- Optionally generate short LLM-based hub replies without exposing local tools
+- Sanitize hub responses before dry-run output or live posting
 
 ## Main Difference From Part 1
 
@@ -44,6 +46,8 @@ This makes the agent more robust and closer to how real agent systems are built.
 ```text
 assignment2-part3-agent/
 ├── README.md
+├── Dockerfile
+├── .dockerignore
 ├── requirements.txt
 ├── .env.example
 ├── .gitignore
@@ -65,7 +69,9 @@ assignment2-part3-agent/
     ├── hub/
     │   ├── hub_client.py
     │   ├── hub_config.py
-    │   └── hub_loop.py
+    │   ├── hub_loop.py
+    │   ├── hub_responder.py
+    │   └── hub_response_guard.py
     └── tools/
         ├── bash_tool.py
         ├── file_reader.py
@@ -354,6 +360,8 @@ At this stage, the hub agent runs in **safe hub mode**:
 - supports dry-run mode
 - limits the number of responses per run
 - does not expose bash or file-editing tools to hub messages
+- can optionally use a text-only LLM responder for short collaboration replies
+- sanitizes responses before they are printed or posted
 
 The Part 2 SWE-agent core is intentionally kept separate from the Part 3 hub layer.
 
@@ -364,7 +372,9 @@ src/
 ├── hub/
 │   ├── hub_client.py
 │   ├── hub_config.py
-│   └── hub_loop.py
+│   ├── hub_loop.py
+│   ├── hub_responder.py
+│   └── hub_response_guard.py
 │
 ├── ... Part 2 SWE-agent files
 ```
@@ -382,6 +392,8 @@ HUB_AGENT_NAME=lullo-swe-agent
 HUB_POLL_INTERVAL_SECONDS=1.2
 HUB_DRY_RUN=true
 HUB_MAX_RESPONSES_PER_RUN=3
+HUB_USE_LLM_RESPONDER=false
+HUB_RESPONDER_MAX_TOKENS=200
 ```
 
 | Variable | Description |
@@ -392,6 +404,8 @@ HUB_MAX_RESPONSES_PER_RUN=3
 | `HUB_POLL_INTERVAL_SECONDS` | Sleep interval between hub requests |
 | `HUB_DRY_RUN` | If `true`, the agent prints responses without posting them |
 | `HUB_MAX_RESPONSES_PER_RUN` | Maximum number of responses during one run |
+| `HUB_USE_LLM_RESPONDER` | Enables the optional text-only LLM responder when set to `true` |
+| `HUB_RESPONDER_MAX_TOKENS` | Token cap for LLM-generated hub replies |
 
 The real hub password should only be stored in `.env`, never committed to Git.
 
@@ -429,6 +443,7 @@ Starting from latest existing seq: X
 Starting hub loop as: lullo-swe-agent
 Safe hub mode is enabled.
 Dry run: True
+LLM responder: False
 Max responses per run: 3
 Poll interval: 1.2 seconds
 Press Ctrl+C to stop.
@@ -513,7 +528,7 @@ Messages from the hub do not directly trigger:
 
 This prevents other agents or hub messages from directly controlling local tools.
 
-The first version only acknowledges direct mentions.
+The hub loop still only responds to direct mentions. If the optional LLM responder is enabled, it only generates a short text reply and still cannot run tools or inspect local files.
 
 Later, the hub layer can be connected to the Part 2 SWE-agent through a separate safety router.
 
@@ -534,34 +549,97 @@ This is important because if every agent responded to every message, the shared 
 
 Implemented:
 
-- `hub_client.py`
-- `fetch_messages`
-- `post_message`
-- `get_stats`
-- `hub_loop.py`
-- polling loop
-- latest sequence tracking
-- mention detection
-- own-message filtering
-- dry-run mode
-- response cap
-- rate-limit sleep
-- `hub_config.py`
-- environment-based hub configuration
-- validation for required settings
+- `hub_client.py`: fetch messages, post messages, and read hub stats
+- `hub_config.py`: environment-based hub configuration and validation
+- `hub_loop.py`: polling loop, mention detection, own-message filtering, dry-run mode, response cap, and rate-limit sleep
+- `hub_responder.py`: optional text-only LLM collaboration responder
+- `hub_response_guard.py`: response trimming, empty-response fallback, length limiting, and basic secret-pattern blocking
+- `Dockerfile`: container entrypoint for running the safe hub loop
 
 Not yet implemented:
 
-- LLM-based collaboration responses
 - integration with the Part 2 SWE-agent loop
 - safe routing from hub messages to SWE tools
-- Docker execution for the hub loop
 
 ### Next Steps
 
 Planned next phases:
 
 - Run a final local live test
-- Add Docker support for the hub loop
-- Add a safer collaboration response mode
 - Later connect hub messages to the Part 2 SWE-agent through a controlled safety layer
+
+### Running with Docker
+
+Build the image:
+
+```bash
+docker build -t assignment2-part3-agent .
+```
+
+Run the hub loop using local environment variables:
+
+```bash
+docker run --rm --env-file .env assignment2-part3-agent
+```
+
+Dry-run mode can be enabled in `.env`:
+
+```env
+HUB_DRY_RUN=true
+```
+
+Live mode can be enabled with:
+
+```env
+HUB_DRY_RUN=false
+```
+
+The `.env` file is excluded from the Docker image using `.dockerignore`.
+This keeps secrets such as the hub password out of the built image.
+
+### Safe LLM Collaboration Responder
+
+The hub agent now supports an optional LLM-based collaboration responder.
+
+This is controlled by:
+
+```env
+HUB_USE_LLM_RESPONDER=true
+HUB_RESPONDER_MAX_TOKENS=200
+```
+
+When enabled, the agent can generate short software-engineering collaboration replies for the shared hub.
+
+The responder is text-only. It cannot:
+
+- execute bash commands
+- edit files
+- call the tool registry
+- access local repository files
+- invoke the Part 2 SWE-agent loop
+
+This keeps the hub integration safer while still allowing more meaningful collaboration.
+
+### Response Guard
+
+Before a message is posted to the hub, it passes through a response guard.
+
+The response guard:
+
+- trims whitespace
+- blocks empty responses
+- limits overly long responses
+- blocks obvious secret/config-related content
+- provides a safe fallback response if needed
+
+Current flow:
+
+```text
+Hub message
+→ mention filter
+→ LLM/simple responder
+→ response guard
+→ dry-run or live post
+```
+
+This reduces the risk of leaking sensitive information or posting unsafe LLM output to the shared group chat.
