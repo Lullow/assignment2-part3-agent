@@ -2,7 +2,7 @@ import time
 
 from requests import RequestException
 from src.hub.hub_responder import build_llm_collaboration_response
-
+from src.hub.hub_response_guard import sanitize_hub_response
 from src.hub.hub_client import fetch_messages, post_message
 from src.hub.hub_config import (
     HUB_AGENT_NAME,
@@ -157,6 +157,7 @@ def run_hub_loop() -> None:
             print(f"Received mention from {sender}: {content}")
 
             response = build_response(message)
+            response = sanitize_hub_response(response, fallback_sender=sender)
 
             if HUB_DRY_RUN:
                 responses_sent += 1
