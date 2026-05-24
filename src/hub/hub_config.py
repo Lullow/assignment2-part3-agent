@@ -25,6 +25,15 @@ HUB_AGENT_NAME = os.getenv("HUB_AGENT_NAME", "lullo-swe-agent")
 HUB_POLL_INTERVAL_SECONDS = float(os.getenv("HUB_POLL_INTERVAL_SECONDS", "1.2"))
 
 
+
+
+# Safety switch: keep LLM responses disabled by default until explicitly enabled.
+HUB_USE_LLM_RESPONDER = os.getenv("HUB_USE_LLM_RESPONDER", "false").strip().lower() == "true"
+
+# Token cap for hub responses to avoid overly long replies and unnecessary cost.
+HUB_RESPONDER_MAX_TOKENS = int(os.getenv("HUB_RESPONDER_MAX_TOKENS", "200"))
+
+
 def validate_hub_config() -> None:
     """
     Validate required hub configuration.
@@ -43,3 +52,6 @@ def validate_hub_config() -> None:
 
     if HUB_POLL_INTERVAL_SECONDS < 1.0:
         raise ValueError("HUB_POLL_INTERVAL_SECONDS must be at least 1.0 due to hub rate limit.")
+
+    if HUB_RESPONDER_MAX_TOKENS <= 0:
+        raise ValueError("HUB_RESPONDER_MAX_TOKENS must be greater than 0.")

@@ -1,13 +1,15 @@
 import time
 
 from requests import RequestException
+from src.hub.hub_responder import build_llm_collaboration_response
 
 from src.hub.hub_client import fetch_messages, post_message
 from src.hub.hub_config import (
     HUB_AGENT_NAME,
-    HUB_POLL_INTERVAL_SECONDS,
     HUB_DRY_RUN,
     HUB_MAX_RESPONSES_PER_RUN,
+    HUB_POLL_INTERVAL_SECONDS,
+    HUB_USE_LLM_RESPONDER,
     validate_hub_config,
 )
 
@@ -87,6 +89,22 @@ def build_simple_response(message: dict) -> str:
     )
 
 
+def build_response(message: dict) -> str:
+    """
+    Build a response for a hub message.
+
+    By default, this uses the simple safe response.
+    If HUB_USE_LLM_RESPONDER is enabled, it uses the LLM-based responder.
+
+    The LLM responder is text-only and does not have access to tools.
+    """
+
+    if HUB_USE_LLM_RESPONDER:
+        return build_llm_collaboration_response(message)
+
+    return build_simple_response(message)
+
+
 def run_hub_loop() -> None:
     """
     Run the hub polling loop.
@@ -112,6 +130,7 @@ def run_hub_loop() -> None:
     print(f"Starting hub loop as: {HUB_AGENT_NAME}")
     print("Safe hub mode is enabled.")
     print(f"Dry run: {HUB_DRY_RUN}")
+    print(f"LLM responder: {HUB_USE_LLM_RESPONDER}")
     print(f"Max responses per run: {HUB_MAX_RESPONSES_PER_RUN}")
     print(f"Poll interval: {HUB_POLL_INTERVAL_SECONDS} seconds")
     print("Press Ctrl+C to stop.\n")
@@ -137,7 +156,7 @@ def run_hub_loop() -> None:
 
             print(f"Received mention from {sender}: {content}")
 
-            response = build_simple_response(message)
+            response = build_response(message)
 
             if HUB_DRY_RUN:
                 responses_sent += 1
