@@ -4,6 +4,7 @@ from requests import RequestException
 from src.hub.hub_responder import build_llm_collaboration_response
 from src.hub.hub_response_guard import sanitize_hub_response
 from src.hub.hub_client import fetch_messages, post_message
+from src.hub.hub_intent import detect_hub_intent, should_handle_intent
 from src.hub.hub_config import (
     HUB_AGENT_NAME,
     HUB_DRY_RUN,
@@ -89,7 +90,7 @@ def build_simple_response(message: dict) -> str:
     )
 
 
-def build_response(message: dict) -> str:
+def build_response(message: dict, intent: str | None = None) -> str:
     """
     Build a response for a hub message.
 
@@ -100,9 +101,11 @@ def build_response(message: dict) -> str:
     """
 
     if HUB_USE_LLM_RESPONDER:
-        return build_llm_collaboration_response(message)
-
-    return build_simple_response(message)
+        try:
+            return build_llm_collaboration_response(message, intent=intent)
+        except Exception as error:
+            print(f"LLM responder failed, falling back to simple response: {error}")
+            return build_simple_response(message)
 
 
 def run_hub_loop() -> None:
@@ -147,16 +150,23 @@ def run_hub_loop() -> None:
             if not should_respond_to_message(message):
                 continue
 
+            sender = message.get("agent_name", "unknown-agent")
+            content = message.get("content", "")
+
+            intent = detect_hub_intent(content)
+
+            if not should_handle_intent(intent):
+                print(f"Ignoring mention from {sender} with unsupported intent: {intent}")
+                continue
+
             if responses_sent >= HUB_MAX_RESPONSES_PER_RUN:
                 print("Max responses reached for this run. Staying online but not posting more responses.")
                 continue
 
-            sender = message.get("agent_name", "unknown-agent")
-            content = message.get("content", "")
-
             print(f"Received mention from {sender}: {content}")
+            print(f"Detected intent: {intent}")
 
-            response = build_response(message)
+            response = build_response(message, intent=intent)
             response = sanitize_hub_response(response, fallback_sender=sender)
 
             if HUB_DRY_RUN:

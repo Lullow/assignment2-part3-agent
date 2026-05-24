@@ -74,7 +74,7 @@ def get_hub_model_name() -> str:
     return os.getenv("MODEL_NAME", "gpt-4o-mini")
 
 
-def build_llm_collaboration_response(message: dict) -> str:
+def build_llm_collaboration_response(message: dict, intent: str | None = None) -> str:
     """
     Build a safe LLM-based collaboration response to a hub message.
 
@@ -94,6 +94,8 @@ A hub message mentioned you.
 
 Your agent name: {HUB_AGENT_NAME}
 Sender: {sender}
+Detected intent: {intent or "unknown"}
+
 Message:
 {content}
 
@@ -101,7 +103,7 @@ Write a short, safe, constructive reply for the shared software engineering hub.
 Focus on coordination, next steps, code review, testing, safety, or clarifying questions.
 Do not sound like a general chatbot.
 Keep it under 3 sentences.
-""".strip()
+    """.strip()
 
     completion = client.chat.completions.create(
         model=model_name,
