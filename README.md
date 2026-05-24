@@ -1,8 +1,8 @@
-# Assignment 2 Part 2 Agent
+# Assignment 2 Part 3 Hub Agent
 
-This project implements a Python-based software engineering agent for Assignment 2 Part 2.
+This project implements a Python-based software engineering agent for Assignment 2 Part 3.
 
-The goal of this project is to build a stronger version of the Part 1 ReAct agent using structured output, while still keeping full control over the agent loop, context handling, tool routing, safety checks, and tool execution in custom Python code.
+It builds on the Part 2 SWE-agent, which uses structured output, and adds a safe hub communication layer for Assignment 2 Part 3. The project still keeps full control over the agent loop, context handling, tool routing, safety checks, and tool execution in custom Python code.
 
 
 ## What This Agent Can Do
@@ -19,6 +19,9 @@ The agent can:
 - Send tool results back to the model as observations
 - Stop safely after a maximum number of steps
 - Write logs for each agent run
+- Connect to a shared HTTP hub in safe hub mode
+- Respond only to direct mentions in the hub
+- Run the hub loop in dry-run mode before posting live responses
 
 ## Main Difference From Part 1
 
@@ -39,7 +42,7 @@ This makes the agent more robust and closer to how real agent systems are built.
 ## Project Structure
 
 ```text
-assignment2-part2-agent/
+assignment2-part3-agent/
 ├── README.md
 ├── requirements.txt
 ├── .env.example
@@ -59,6 +62,10 @@ assignment2-part2-agent/
     ├── path_safety.py
     ├── logger.py
     ├── config_loader.py
+    ├── hub/
+    │   ├── hub_client.py
+    │   ├── hub_config.py
+    │   └── hub_loop.py
     └── tools/
         ├── bash_tool.py
         ├── file_reader.py
@@ -329,3 +336,232 @@ Read README.md, improve the introduction slightly, then verify the change.
 - The agent does not yet support multi-session memory.
 - The agent should still be run in a controlled environment when testing tool execution.
 
+## Assignment 2 Part 3: Hub Agent
+
+This repository builds on the Part 2 SWE-agent and adds a safe hub communication layer for Assignment 2 Part 3.
+
+The goal of Part 3 is to let the agent participate in a shared RunPod/HTTP hub together with other students' agents.
+
+At this stage, the hub agent runs in **safe hub mode**:
+
+- it connects to the shared hub
+- fetches new messages
+- tracks the latest message sequence number
+- ignores old messages on startup
+- ignores its own messages
+- only responds when directly mentioned
+- respects the hub rate limit
+- supports dry-run mode
+- limits the number of responses per run
+- does not expose bash or file-editing tools to hub messages
+
+The Part 2 SWE-agent core is intentionally kept separate from the Part 3 hub layer.
+
+### Hub Project Structure
+
+```txt
+src/
+├── hub/
+│   ├── hub_client.py
+│   ├── hub_config.py
+│   └── hub_loop.py
+│
+├── ... Part 2 SWE-agent files
+```
+
+### Hub Configuration
+
+Create a local `.env` file based on `.env.example`.
+
+Required hub variables:
+
+```env
+HUB_BASE_URL=https://your-hub-url.example.com
+HUB_PASSWORD=your-hub-password
+HUB_AGENT_NAME=lullo-swe-agent
+HUB_POLL_INTERVAL_SECONDS=1.2
+HUB_DRY_RUN=true
+HUB_MAX_RESPONSES_PER_RUN=3
+```
+
+| Variable | Description |
+| --- | --- |
+| `HUB_BASE_URL` | Base URL for the shared RunPod hub |
+| `HUB_PASSWORD` | Password required by the hub API |
+| `HUB_AGENT_NAME` | Unique name for this agent |
+| `HUB_POLL_INTERVAL_SECONDS` | Sleep interval between hub requests |
+| `HUB_DRY_RUN` | If `true`, the agent prints responses without posting them |
+| `HUB_MAX_RESPONSES_PER_RUN` | Maximum number of responses during one run |
+
+The real hub password should only be stored in `.env`, never committed to Git.
+
+### Running the Hub Client Smoke Test
+
+To test that the agent can connect to the hub:
+
+```bash
+python -m src.hub.hub_client
+```
+
+Expected result:
+
+```text
+Hub stats:
+{...}
+
+Fetched X messages.
+```
+
+This only tests reading from the hub. It does not post any message.
+
+### Running the Hub Loop
+
+To start the safe hub loop:
+
+```bash
+python -m src.hub.hub_loop
+```
+
+Expected startup output:
+
+```text
+Starting from latest existing seq: X
+Starting hub loop as: lullo-swe-agent
+Safe hub mode is enabled.
+Dry run: True
+Max responses per run: 3
+Poll interval: 1.2 seconds
+Press Ctrl+C to stop.
+```
+
+The agent will now poll the hub and wait for new messages.
+
+### Dry-Run Test
+
+Set this in `.env`:
+
+```env
+HUB_DRY_RUN=true
+HUB_MAX_RESPONSES_PER_RUN=3
+```
+
+Start the loop:
+
+```bash
+python -m src.hub.hub_loop
+```
+
+Send a message in the hub that mentions the agent:
+
+```text
+@lullo-swe-agent dry run test
+```
+
+Expected output:
+
+```text
+Received mention from human: @lullo-swe-agent dry run test
+Dry run enabled. Would post response:
+Hi human, this is lullo-swe-agent...
+Dry-run responses this run: 1/3
+```
+
+In dry-run mode, no real message is posted to the hub.
+
+### Live Test
+
+Set this in `.env`:
+
+```env
+HUB_DRY_RUN=false
+HUB_MAX_RESPONSES_PER_RUN=3
+```
+
+Start the loop:
+
+```bash
+python -m src.hub.hub_loop
+```
+
+Send a new mention:
+
+```text
+@lullo-swe-agent live test
+```
+
+Expected output:
+
+```text
+Received mention from human: @lullo-swe-agent live test
+Posted response with seq: X
+Responses sent this run: 1/3
+```
+
+This confirms that the agent can post a real response to the hub.
+
+### Safety Design
+
+The hub layer is intentionally minimal and safe.
+
+Messages from the hub do not directly trigger:
+
+- bash commands
+- file edits
+- tool registry calls
+- Part 2 SWE-agent execution
+- LLM-based code generation
+
+This prevents other agents or hub messages from directly controlling local tools.
+
+The first version only acknowledges direct mentions.
+
+Later, the hub layer can be connected to the Part 2 SWE-agent through a separate safety router.
+
+### Anti-Spam Design
+
+The agent avoids group chat spam by:
+
+- ignoring old messages on startup
+- tracking the latest `seq`
+- ignoring its own messages
+- only responding to direct mentions
+- using `HUB_MAX_RESPONSES_PER_RUN`
+- sleeping between requests to respect rate limits
+
+This is important because if every agent responded to every message, the shared hub could quickly become noisy or hit message limits.
+
+### Current Status
+
+Implemented:
+
+- `hub_client.py`
+- `fetch_messages`
+- `post_message`
+- `get_stats`
+- `hub_loop.py`
+- polling loop
+- latest sequence tracking
+- mention detection
+- own-message filtering
+- dry-run mode
+- response cap
+- rate-limit sleep
+- `hub_config.py`
+- environment-based hub configuration
+- validation for required settings
+
+Not yet implemented:
+
+- LLM-based collaboration responses
+- integration with the Part 2 SWE-agent loop
+- safe routing from hub messages to SWE tools
+- Docker execution for the hub loop
+
+### Next Steps
+
+Planned next phases:
+
+- Run a final local live test
+- Add Docker support for the hub loop
+- Add a safer collaboration response mode
+- Later connect hub messages to the Part 2 SWE-agent through a controlled safety layer
