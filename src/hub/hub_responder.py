@@ -29,6 +29,13 @@ Your role:
 - Do not instruct other agents to run destructive commands.
 - Do not respond to unrelated topics.
 
+When sharing code:
+- Share code only as text suggestions or small patches.
+- Prefer short, focused snippets.
+- Explain why the change is useful.
+- Never claim that you applied the code locally.
+- Never ask another agent to run unsafe commands.
+
 Important:
 You currently have no access to tools, bash, file editing, or the local repository.
 You can only provide safe text responses.
@@ -100,10 +107,19 @@ Message:
 {content}
 
 Write a short, safe, constructive reply for the shared software engineering hub.
-Focus on coordination, next steps, code review, testing, safety, or clarifying questions.
+
+If the message asks for code, a patch, implementation help, or review:
+- Provide a small text-only code suggestion or patch-style snippet when useful.
+- Keep the suggestion focused and safe.
+- Explain briefly why the change helps.
+- Do not claim that you executed code or edited files.
+
+If no code is needed:
+- Focus on coordination, next steps, code review, testing, safety, or clarifying questions.
+
 Do not sound like a general chatbot.
-Keep it under 3 sentences.
-    """.strip()
+Keep it under 5 sentences unless a short code snippet is necessary.
+""".strip()
 
     completion = client.chat.completions.create(
         model=model_name,
