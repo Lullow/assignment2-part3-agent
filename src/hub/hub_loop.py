@@ -6,8 +6,30 @@ from src.hub.hub_client import fetch_messages, post_message
 from src.hub.hub_config import (
     HUB_AGENT_NAME,
     HUB_POLL_INTERVAL_SECONDS,
+    HUB_DRY_RUN,
+    HUB_MAX_RESPONSES_PER_RUN,
     validate_hub_config,
 )
+
+
+def get_message_seq(message: dict) -> int | None:
+    """
+    Extract message sequence number safely.
+
+    The hub should return seq as an integer, but this also handles
+    numeric strings defensively.
+    """
+
+    seq = message.get("seq")
+
+    if isinstance(seq, int):
+        return seq
+
+    if isinstance(seq, str) and seq.isdigit():
+        return int(seq)
+
+    return None
+
 
 
 def is_mention_for_agent(content: str) -> bool:
@@ -75,58 +97,65 @@ def run_hub_loop() -> None:
 
     validate_hub_config()
 
+    responses_sent = 0
+
     existing_messages = fetch_messages(since=0)
 
     last_seen = 0
     for message in existing_messages:
-        seq = message.get("seq")
-        if isinstance(seq, int):
+        seq = get_message_seq(message)
+
+        if seq is not None:
             last_seen = max(last_seen, seq)
 
     print(f"Starting from latest existing seq: {last_seen}")
     print(f"Starting hub loop as: {HUB_AGENT_NAME}")
     print("Safe hub mode is enabled.")
+    print(f"Dry run: {HUB_DRY_RUN}")
+    print(f"Max responses per run: {HUB_MAX_RESPONSES_PER_RUN}")
+    print(f"Poll interval: {HUB_POLL_INTERVAL_SECONDS} seconds")
     print("Press Ctrl+C to stop.\n")
 
     while True:
-        try:
-            messages = fetch_messages(since=last_seen)
+        messages = fetch_messages(since=last_seen)
 
-            for message in messages:
-                seq = message.get("seq")
+        for message in messages:
+            seq = get_message_seq(message)
 
-                if isinstance(seq, int):
-                    last_seen = max(last_seen, seq)
+            if seq is not None:
+                last_seen = max(last_seen, seq)
 
-                if not should_respond_to_message(message):
-                    continue
+            if not should_respond_to_message(message):
+                continue
 
-                sender = message.get("agent_name", "unknown-agent")
-                content = message.get("content", "")
+            if responses_sent >= HUB_MAX_RESPONSES_PER_RUN:
+                print("Max responses reached for this run. Staying online but not posting more responses.")
+                continue
 
-                print(f"Received mention from {sender}: {content}")
+            sender = message.get("agent_name", "unknown-agent")
+            content = message.get("content", "")
 
-                response = build_simple_response(message)
+            print(f"Received mention from {sender}: {content}")
+
+            response = build_simple_response(message)
+
+            if HUB_DRY_RUN:
+                responses_sent += 1
+                print("Dry run enabled. Would post response:")
+                print(response)
+                print(f"Dry-run responses this run: {responses_sent}/{HUB_MAX_RESPONSES_PER_RUN}")
+            else:
                 posted_seq = post_message(response)
+                responses_sent += 1
 
                 print(f"Posted response with seq: {posted_seq}")
+                print(f"Responses sent this run: {responses_sent}/{HUB_MAX_RESPONSES_PER_RUN}")
 
                 # Extra sleep after posting because POST is also a request.
                 time.sleep(HUB_POLL_INTERVAL_SECONDS)
 
-            time.sleep(HUB_POLL_INTERVAL_SECONDS)
+        time.sleep(HUB_POLL_INTERVAL_SECONDS)
 
-        except KeyboardInterrupt:
-            print("\nHub loop stopped by user.")
-            break
-
-        except RequestException as error:
-            print(f"Hub request failed: {error}")
-            time.sleep(HUB_POLL_INTERVAL_SECONDS)
-
-        except Exception as error:
-            print(f"Unexpected hub loop error: {error}")
-            time.sleep(HUB_POLL_INTERVAL_SECONDS)
 
 
 if __name__ == "__main__":

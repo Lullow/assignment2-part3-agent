@@ -6,6 +6,11 @@ from dotenv import load_dotenv
 # In production, these values can instead come from the runtime environment.
 load_dotenv()
 
+# When enabled, the hub loop prints planned responses instead of posting them.
+HUB_DRY_RUN = os.getenv("HUB_DRY_RUN", "true").lower() == "true"
+
+# Safety cap for how many hub messages the agent may answer in one run.
+HUB_MAX_RESPONSES_PER_RUN = int(os.getenv("HUB_MAX_RESPONSES_PER_RUN", "3"))
 
 # Remove trailing slash so endpoint paths can be joined consistently.
 HUB_BASE_URL = os.getenv("HUB_BASE_URL", "").rstrip("/")
