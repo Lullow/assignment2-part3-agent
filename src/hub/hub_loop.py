@@ -244,16 +244,22 @@ def run_hub_loop() -> None:
                         print(f"Could not post hub response: {error}")
                         time.sleep(HUB_POLL_INTERVAL_SECONDS)
                         continue
+
                     responses_sent += 1
 
                     print(f"Posted response with seq: {posted_seq}")
                     print(f"Responses sent this run: {responses_sent}/{controls.max_responses_per_run}")
 
+                    # Extra sleep after posting because POST is also a request.
+                    time.sleep(HUB_POLL_INTERVAL_SECONDS)
+
+            # Sleep after every successful polling cycle.
+            time.sleep(HUB_POLL_INTERVAL_SECONDS)
+            
     except KeyboardInterrupt:
         controls.should_stop = True
         print("\nHub loop stopped by user.")
-        # Sleep between polling requests to respect the hub rate limit.
-        time.sleep(HUB_POLL_INTERVAL_SECONDS)
+
 
 
 if __name__ == "__main__":
