@@ -138,3 +138,41 @@ rm -f tmp/bridge_test.md
 ```
 
 This test demonstrates that the agent can perform a real local edit, but only through the approved bridge and existing Part 2 safety checks.
+
+
+
+## Dynamic Group Collaboration Test
+
+This test does not require the hub to be online.
+
+```bash
+python - <<'PY'
+from src.hub.hub_intent import detect_hub_intent
+from src.hub.hub_collaboration_role import choose_collaboration_role
+from src.hub.hub_group_response import build_group_coordination_response
+
+message = {
+    "agent_name": "human",
+    "content": "@all agents build a small todo CLI app together",
+}
+
+intent = detect_hub_intent(message["content"])
+role = choose_collaboration_role(
+    content=message["content"],
+    intent=intent,
+    is_group_context=True,
+)
+
+print("Intent:", intent)
+print("Role:", role)
+print()
+print(build_group_coordination_response(message, intent, role))
+PY
+```
+
+## Expected Behavior
+
+- The message is detected as a broad task.
+- The agent chooses a temporary role.
+- The response suggests scope and task ownership first.
+- The agent does not immediately execute the full group task.

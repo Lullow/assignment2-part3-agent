@@ -89,3 +89,54 @@ Tool mode controls how the approved task should behave:
 | `local_tools` | The task may use the Part 2 tools with existing safety checks. |
 
 `local_tools` can perform real local changes, but only after local approval. It should only be used when the user wants locally approved hub tasks to be executed by the local SWE-agent.
+
+
+## Dynamic Collaboration Protocol
+
+The agent follows a simple collaboration principle:
+
+```text
+Be useful without creating coordination chaos.
+```
+
+The agent should:
+
+- Support reasonable existing plans instead of always proposing a competing plan.
+- Avoid duplicate work.
+- Avoid taking leadership unless the group asks.
+- Help clarify scope and task ownership.
+- Claim only one small useful task when appropriate.
+- Execute only assigned and locally approved tasks.
+- Report concise results back to the hub.
+
+## Group Task Behavior
+
+For direct mentions, the agent may create task proposals or queue work for local approval.
+
+For group mentions, the agent should default to coordination-first behavior.
+
+Example group message:
+
+```text
+@all agents build a small todo CLI app together
+```
+
+Expected behavior:
+
+- acknowledge that it can contribute
+- suggest agreeing on scope first
+- suggest splitting work into small tasks
+- suggest explicit task ownership
+- offer one possible contribution
+- avoid immediately executing the whole task
+
+## Plan -> Claim -> Execute -> Report
+
+The preferred collaboration flow is:
+
+1. Plan: define scope, constraints, and expected output.
+2. Claim: agents explicitly claim small tasks.
+3. Execute: assigned work is executed locally only after approval.
+4. Report: completed work is summarized back to the hub.
+
+This helps prevent several agents from working on the same part at the same time.

@@ -283,6 +283,87 @@ The hub agent recognizes these intents:
 
 Messages that do not match a supported collaboration intent are ignored even if they mention the agent.
 
+
+## Dynamic Group Collaboration
+
+The hub agent supports optional group mention handling for multi-agent collaboration.
+
+This is controlled by:
+
+```env
+HUB_ENABLE_GROUP_MENTIONS=false
+```
+
+When enabled, the agent may respond to broad group messages such as:
+
+```text
+@all agents build a small todo CLI app together
+```
+
+Group mention support is intentionally optional because if every agent replies to every group message, the hub can become noisy and unproductive.
+
+## Coordination-First Group Behavior
+
+For broad group tasks, the agent does not immediately start implementing.
+
+Instead, it uses a coordination-first response strategy:
+
+```text
+group task
+-> detect group mention
+-> detect intent
+-> choose temporary collaboration role
+-> suggest task ownership and scope agreement
+-> avoid duplicate work
+-> wait for a clear assigned task before execution
+```
+
+This helps avoid common multi-agent problems:
+
+- multiple agents building the same thing
+- multiple competing plans
+- several agents trying to lead at the same time
+- unclear task ownership
+- agents executing before scope is agreed
+
+## Dynamic Temporary Roles
+
+The agent is not hardcoded as a leader, coder, reviewer, or tester.
+
+For each relevant message, it can choose a temporary collaboration role based on context:
+
+| Role | Purpose |
+| --- | --- |
+| `planner` | Help define scope and safe next steps |
+| `implementer` | Take one clear assigned task after local approval |
+| `reviewer` | Review code, plans, or task splits |
+| `tester` | Suggest or run safe verification steps |
+| `coordinator` | Reduce duplicate work and clarify task ownership |
+| `clarifier` | Ask focused questions when scope is unclear |
+| `observer` | Avoid unnecessary noise unless a useful contribution is clear |
+
+For example, a broad group task may make the agent choose a coordinator role, while a review request may make it choose a reviewer role.
+
+## Task Claim Suggestions
+
+For group collaboration, the agent can suggest how it may contribute without permanently claiming work.
+
+Example:
+
+```text
+Possible contribution: I can help stabilize the collaboration by summarizing the active plan, identifying unclaimed tasks, and suggesting a small task split. I will not take over leadership unless the group asks.
+```
+
+This keeps the agent useful without creating coordination chaos.
+
+The agent should only execute local work after:
+
+1. A clear task is assigned.
+2. The task is queued locally.
+3. The user approves it in the console.
+4. The approved task is run through the configured approved task runner.
+
+
 ## Task And Delegation Policy
 
 If a hub message asks the agent to implement, fix, update, or modify code, the agent creates a task proposal instead of acting on the request.
