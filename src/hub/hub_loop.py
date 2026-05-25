@@ -1,6 +1,7 @@
 import time
 
 from requests import RequestException
+
 from src.hub.hub_responder import build_llm_collaboration_response
 from src.hub.hub_response_guard import sanitize_hub_response
 from src.hub.hub_client import fetch_messages, post_message
@@ -11,7 +12,12 @@ from src.hub.hub_config import (
     HUB_MAX_RESPONSES_PER_RUN,
     HUB_POLL_INTERVAL_SECONDS,
     HUB_USE_LLM_RESPONDER,
+    HUB_RESPONDER_MAX_TOKENS,
     validate_hub_config,
+)
+from src.hub.hub_runtime_controls import (
+    HubRuntimeControls,
+    start_console_control_thread,
 )
 
 
@@ -32,7 +38,6 @@ def get_message_seq(message: dict) -> int | None:
         return int(seq)
 
     return None
-
 
 
 def is_mention_for_agent(content: str) -> bool:
@@ -65,12 +70,15 @@ def should_respond_to_message(message: dict) -> bool:
     sender = message.get("agent_name", "")
     content = message.get("content", "")
 
+    # Avoid responding to our own messages and creating a feedback loop.
     if sender == HUB_AGENT_NAME:
         return False
 
+    # Ignore empty messages because there is nothing meaningful to process.
     if not content:
         return False
 
+    # Only respond when the message explicitly mentions this agent.
     return is_mention_for_agent(content)
 
 
@@ -90,22 +98,36 @@ def build_simple_response(message: dict) -> str:
     )
 
 
-def build_response(message: dict, intent: str | None = None) -> str:
+def build_response(
+    message: dict,
+    intent: str | None = None,
+    max_tokens: int | None = None,
+) -> str:
     """
     Build a response for a hub message.
 
     By default, this uses the simple safe response.
-    If HUB_USE_LLM_RESPONDER is enabled, it uses the LLM-based responder.
+    If HUB_USE_LLM_RESPONDER is enabled, it tries to use the LLM-based responder.
 
-    The LLM responder is text-only and does not have access to tools.
+    If the LLM responder fails, the agent falls back to the simple safe response
+    instead of crashing the hub loop.
     """
 
     if HUB_USE_LLM_RESPONDER:
         try:
-            return build_llm_collaboration_response(message, intent=intent)
+            # Use the LLM responder only when explicitly enabled in config.
+            return build_llm_collaboration_response(
+                message,
+                intent=intent,
+                max_tokens=max_tokens,
+            )
         except Exception as error:
+            # Keep the hub loop alive even if the LLM provider fails.
             print(f"LLM responder failed, falling back to simple response: {error}")
             return build_simple_response(message)
+
+    # Default safe mode: acknowledge mentions without calling the LLM.
+    return build_simple_response(message)
 
 
 def run_hub_loop() -> None:
@@ -118,32 +140,57 @@ def run_hub_loop() -> None:
 
     validate_hub_config()
 
+    # Runtime controls can be changed while the loop is running through console commands.
+    controls = HubRuntimeControls(
+        paused=False,
+        should_stop=False,
+        max_responses_per_run=HUB_MAX_RESPONSES_PER_RUN,
+        max_tokens=HUB_RESPONDER_MAX_TOKENS,
+    )
+
+    # Start local console controls in the background without blocking hub polling.
+    start_console_control_thread(controls)
+
     responses_sent = 0
-
-    existing_messages = fetch_messages(since=0)
-
     last_seen = 0
-    for message in existing_messages:
-        seq = get_message_seq(message)
 
-        if seq is not None:
-            last_seen = max(last_seen, seq)
+    try:
+        # Load existing messages once so the agent does not reply to old hub history.
+        existing_messages = fetch_messages(since=0)
+
+        for message in existing_messages:
+            seq = get_message_seq(message)
+
+            if seq is not None:
+                last_seen = max(last_seen, seq)
+
+    except RequestException as error:
+        print(f"Could not fetch existing hub messages at startup: {error}")
+        print("Starting with last_seen = 0. The loop will retry.")
 
     print(f"Starting from latest existing seq: {last_seen}")
     print(f"Starting hub loop as: {HUB_AGENT_NAME}")
     print("Safe hub mode is enabled.")
     print(f"Dry run: {HUB_DRY_RUN}")
     print(f"LLM responder: {HUB_USE_LLM_RESPONDER}")
-    print(f"Max responses per run: {HUB_MAX_RESPONSES_PER_RUN}")
+    print(f"Max responses per run: {controls.max_responses_per_run}")
+    print(f"Max tokens: {controls.max_tokens}")
     print(f"Poll interval: {HUB_POLL_INTERVAL_SECONDS} seconds")
     print("Press Ctrl+C to stop.\n")
 
-    while True:
-        messages = fetch_messages(since=last_seen)
+    while not controls.should_stop:
+        try:
+            # Fetch only messages newer than the latest sequence number we have seen.
+            messages = fetch_messages(since=last_seen)
+        except RequestException as error:
+            print(f"Could not fetch hub messages: {error}")
+            time.sleep(HUB_POLL_INTERVAL_SECONDS)
+            continue
 
         for message in messages:
             seq = get_message_seq(message)
 
+            # Update last_seen even for ignored messages so they are not processed again.
             if seq is not None:
                 last_seen = max(last_seen, seq)
 
@@ -153,39 +200,59 @@ def run_hub_loop() -> None:
             sender = message.get("agent_name", "unknown-agent")
             content = message.get("content", "")
 
+            # Detect intent before responding so the agent only handles relevant messages.
             intent = detect_hub_intent(content)
 
+            # Ignore mentions that do not match supported collaboration intents.
             if not should_handle_intent(intent):
                 print(f"Ignoring mention from {sender} with unsupported intent: {intent}")
                 continue
 
-            if responses_sent >= HUB_MAX_RESPONSES_PER_RUN:
+            # Pause mode keeps the agent online but prevents it from posting.
+            if controls.paused:
+                print(f"Agent is paused. Ignoring mention from {sender}.")
+                continue
+
+            # Safety cap to avoid spamming the hub or using too many LLM calls.
+            if responses_sent >= controls.max_responses_per_run:
                 print("Max responses reached for this run. Staying online but not posting more responses.")
                 continue
 
             print(f"Received mention from {sender}: {content}")
             print(f"Detected intent: {intent}")
 
-            response = build_response(message, intent=intent)
+            response = build_response(
+                message,
+                intent=intent,
+                max_tokens=controls.max_tokens,
+            )
+
+            # Final safety layer before anything is printed or posted to the shared hub.
             response = sanitize_hub_response(response, fallback_sender=sender)
 
             if HUB_DRY_RUN:
+                # Dry-run mode shows what would be posted without sending it to the hub.
                 responses_sent += 1
                 print("Dry run enabled. Would post response:")
                 print(response)
-                print(f"Dry-run responses this run: {responses_sent}/{HUB_MAX_RESPONSES_PER_RUN}")
+                print(f"Dry-run responses this run: {responses_sent}/{controls.max_responses_per_run}")
             else:
-                posted_seq = post_message(response)
+                try:
+                    posted_seq = post_message(response)
+                except RequestException as error:
+                    print(f"Could not post hub response: {error}")
+                    time.sleep(HUB_POLL_INTERVAL_SECONDS)
+                    continue
                 responses_sent += 1
 
                 print(f"Posted response with seq: {posted_seq}")
-                print(f"Responses sent this run: {responses_sent}/{HUB_MAX_RESPONSES_PER_RUN}")
+                print(f"Responses sent this run: {responses_sent}/{controls.max_responses_per_run}")
 
                 # Extra sleep after posting because POST is also a request.
                 time.sleep(HUB_POLL_INTERVAL_SECONDS)
 
+        # Sleep between polling requests to respect the hub rate limit.
         time.sleep(HUB_POLL_INTERVAL_SECONDS)
-
 
 
 if __name__ == "__main__":
