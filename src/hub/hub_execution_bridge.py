@@ -3,6 +3,7 @@ from pathlib import Path
 
 from src.hub.hub_config import HUB_APPROVED_TASK_RUNNER
 from src.hub.hub_task_queue import QueuedHubTask
+from src.hub.hub_result_report import build_approved_task_report
 from src.hub.hub_config import (
     HUB_APPROVED_TASK_RUNNER,
     HUB_APPROVED_TASK_TOOL_MODE,
@@ -68,14 +69,12 @@ def run_approved_task_with_part2_agent(task: QueuedHubTask) -> str:
         system_prompt=system_prompt,
     )
 
-    return (
-        "APPROVED HUB TASK EXECUTED THROUGH LOCAL PART 2 SWE-AGENT\n\n"
-        f"Task #{task.task_id}\n"
-        f"Requested by: {task.sender}\n"
-        f"Intent: {task.intent}\n\n"
-        f"Tool mode: {HUB_APPROVED_TASK_TOOL_MODE}\n"
-        "Final answer from local Part 2 agent:\n"
-        f"{final_answer}"
+    return build_approved_task_report(
+        task_id=task.task_id,
+        sender=task.sender,
+        intent=task.intent,
+        tool_mode=HUB_APPROVED_TASK_TOOL_MODE,
+        final_answer=final_answer,
     )
 
 
