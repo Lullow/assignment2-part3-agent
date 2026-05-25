@@ -2,18 +2,73 @@ from typing import Literal
 
 
 # Allowed intent labels for hub messages.
-# Literal makes the return type stricter than a plain string.
+# Literal makes the return type stricter than using a plain string.
 HubIntent = Literal[
     "review",
     "plan",
     "status",
     "help",
     "question",
+    "code_request",
+    "execute_task",
+    "delegate_task",
     "ignore",
 ]
 
 
-# Keywords that indicate the sender wants code or work reviewed.
+# Keywords that indicate the sender wants this agent to perform or implement work.
+# This does not mean the agent will execute tools automatically; it only detects intent.
+EXECUTE_TASK_KEYWORDS = [
+    "implement",
+    "build",
+    "create",
+    "add",
+    "fix",
+    "update",
+    "modify",
+    "change",
+    "write code",
+    "make this",
+    "do this",
+    "utför",
+    "bygg",
+    "skapa",
+    "lägg till",
+    "fixa",
+    "ändra",
+    "uppdatera",
+]
+
+
+# Keywords that indicate the sender wants a code suggestion, not direct execution.
+CODE_REQUEST_KEYWORDS = [
+    "suggest a patch",
+    "code suggestion",
+    "code snippet",
+    "patch",
+    "implementation help",
+    "can you suggest code",
+    "föreslå kod",
+    "kodförslag",
+    "patchförslag",
+]
+
+
+# Keywords that indicate coordination between multiple agents.
+DELEGATE_TASK_KEYWORDS = [
+    "delegate",
+    "assign",
+    "split the task",
+    "who should do",
+    "coordinate agents",
+    "ask another agent",
+    "delegera",
+    "tilldela",
+    "dela upp",
+]
+
+
+# Keywords that indicate the sender wants feedback or review.
 REVIEW_KEYWORDS = [
     "review",
     "code review",
@@ -25,7 +80,7 @@ REVIEW_KEYWORDS = [
 ]
 
 
-# Keywords that indicate planning or coordination work.
+# Keywords that indicate planning or next-step coordination.
 PLAN_KEYWORDS = [
     "plan",
     "next step",
@@ -79,12 +134,26 @@ def detect_hub_intent(content: str) -> HubIntent:
 
     This is a lightweight keyword-based filter.
     It helps the agent avoid responding too broadly in the shared hub.
+
+    More specific intents should be checked before broader intents.
     """
 
     # Normalize casing so keyword matching works regardless of capitalization.
     normalized = content.lower()
 
-    # The order matters: more specific intents are checked before generic questions.
+    # Order matters: delegation is more specific than a general plan or question.
+    if any(keyword in normalized for keyword in DELEGATE_TASK_KEYWORDS):
+        return "delegate_task"
+
+    # Code suggestions are separated from execution requests for safety.
+    if any(keyword in normalized for keyword in CODE_REQUEST_KEYWORDS):
+        return "code_request"
+
+    # Detect requests that sound like implementation work.
+    # Later logic can still decide whether the agent is allowed to act on it.
+    if any(keyword in normalized for keyword in EXECUTE_TASK_KEYWORDS):
+        return "execute_task"
+
     if any(keyword in normalized for keyword in REVIEW_KEYWORDS):
         return "review"
 
@@ -97,7 +166,7 @@ def detect_hub_intent(content: str) -> HubIntent:
     if any(keyword in normalized for keyword in HELP_KEYWORDS):
         return "help"
 
-    # Questions are checked late because many other intents can also contain questions.
+    # Questions are checked late because many specific intents can also be phrased as questions.
     if any(keyword in normalized for keyword in QUESTION_KEYWORDS):
         return "question"
 
@@ -110,11 +179,14 @@ def should_handle_intent(intent: HubIntent) -> bool:
     Decide whether this agent should handle a detected intent.
     """
 
-    # Keep this as an explicit allowlist so new intent types are ignored by default.
+    # Explicit allowlist: unknown or ignored intents are not handled by default.
     return intent in {
         "review",
         "plan",
         "status",
         "help",
         "question",
+        "code_request",
+        "execute_task",
+        "delegate_task",
     }
