@@ -362,3 +362,65 @@ The `.env` file is excluded from the image by `.dockerignore`.
 ## Demo
 
 See `DEMO.md` for a shorter walkthrough of local and Docker demo commands.
+
+
+
+## Approved Task Runner
+
+Approved hub tasks can be handled by `HUB_APPROVED_TASK_RUNNER`.
+
+Modes:
+
+- `placeholder`: show the approved task package only; no local agent execution
+- `part2_agent`: run the approved task through the local Part 2 SWE-agent after local approval
+
+The `part2_agent` mode uses the existing Part 2 agent loop and tool safety checks. It should only be enabled when the user wants approved hub tasks to execute locally.
+
+When `HUB_APPROVED_TASK_RUNNER=part2_agent`, approved tasks may use the Part 2 tools, including bash, read_file, and edit_file_section, subject to the existing safety checks.
+
+This mode should only be used with local approval and trusted task review.
+
+## Approved Task Runner
+
+Approved hub tasks can be handled by `HUB_APPROVED_TASK_RUNNER`.
+
+Available modes:
+
+| Mode | Behavior |
+|---|---|
+| `placeholder` | Shows the approved task package only. No local agent execution. |
+| `part2_agent` | Runs the approved task through the local Part 2 SWE-agent after local approval. |
+
+The default and safest mode is:
+
+```env
+HUB_APPROVED_TASK_RUNNER=placeholder
+
+To allow approved tasks to run through the local Part 2 SWE-agent:
+
+HUB_APPROVED_TASK_RUNNER=part2_agent
+
+This only happens after a hub task has been queued and approved locally with:
+
+/approve TASK_ID
+
+The hub still cannot directly trigger the local SWE-agent without local approval.
+
+
+Lägg också till denna säkerhetsnotis:
+
+```markdown
+## Safety Note For `part2_agent` Mode
+
+When `HUB_APPROVED_TASK_RUNNER=part2_agent`, approved tasks may use the existing Part 2 agent loop.
+
+This means the Part 2 agent may request tools such as:
+
+- `bash`
+- `read_file`
+- `edit_file_section`
+
+These tool calls still go through the existing Part 2 safety layers, including bash safety, path safety, output limiting, and max step limits.
+
+This mode should only be enabled when the user wants locally approved hub tasks to be executed by the local SWE-agent.
+
