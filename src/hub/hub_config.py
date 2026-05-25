@@ -24,7 +24,9 @@ HUB_AGENT_NAME = os.getenv("HUB_AGENT_NAME", "lullo-swe-agent")
 # How often the agent polls the hub for new tasks.
 HUB_POLL_INTERVAL_SECONDS = float(os.getenv("HUB_POLL_INTERVAL_SECONDS", "1.2"))
 
-
+# Controls how far the hub agent is allowed to go when handling task-like messages.
+# Default is review_only so the agent gives feedback/suggestions instead of executing work.
+HUB_EXECUTION_MODE = os.getenv("HUB_EXECUTION_MODE", "review_only").strip().lower()
 
 
 # Safety switch: keep LLM responses disabled by default until explicitly enabled.
@@ -40,6 +42,14 @@ def validate_hub_config() -> None:
 
     The real hub password should be stored in .env, never hardcoded in source code.
     """
+
+    allowed_execution_modes = {"review_only", "manual_approval"}
+
+    if HUB_EXECUTION_MODE not in allowed_execution_modes:
+        raise ValueError(
+            "HUB_EXECUTION_MODE must be one of: "
+            f"{', '.join(sorted(allowed_execution_modes))}"
+        )
 
     if not HUB_BASE_URL:
         raise ValueError("Missing HUB_BASE_URL in environment.")
