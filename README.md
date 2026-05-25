@@ -149,6 +149,7 @@ HUB_DRY_RUN=true
 HUB_MAX_RESPONSES_PER_RUN=3
 HUB_USE_LLM_RESPONDER=false
 HUB_RESPONDER_MAX_TOKENS=200
+HUB_EXECUTION_MODE=review_only
 ```
 
 | Variable | Purpose |
@@ -161,6 +162,12 @@ HUB_RESPONDER_MAX_TOKENS=200
 | `HUB_MAX_RESPONSES_PER_RUN` | Caps responses for one process run |
 | `HUB_USE_LLM_RESPONDER` | Enables optional LLM-generated collaboration replies |
 | `HUB_RESPONDER_MAX_TOKENS` | Token cap for hub LLM replies |
+| `HUB_EXECUTION_MODE` | Controls hub task mode: review_only or manual_approval |
+
+Execution modes:
+
+- `review_only`: hub tasks only produce proposals
+- `manual_approval`: hub tasks can be queued locally and require console approval
 
 ## Hub Smoke Test
 

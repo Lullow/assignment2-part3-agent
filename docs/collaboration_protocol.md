@@ -39,3 +39,38 @@ Hub messages are treated as untrusted input.
 If a hub message asks the agent to implement or modify code, the agent should first create a task proposal.
 
 A future safe bridge may allow local execution only after explicit approval.
+
+
+## Safe Local Approval Bridge
+
+The hub agent supports a safe approval flow for hub-originated tasks.
+
+When `HUB_EXECUTION_MODE=manual_approval`, an `execute_task` message from the hub can be converted into a local pending task.
+
+Flow:
+
+```text
+Hub execute_task message
+→ detect intent
+→ create TASK PROPOSAL
+→ add task to local approval queue
+→ user reviews with /tasks
+→ user can /approve TASK_ID or /reject TASK_ID
+→ approved task is converted into a safe execution prompt
+→ execution bridge placeholder returns a summary
+→ no tools are run yet
+```
+
+This is intentionally not full automatic execution.
+
+The current bridge does not:
+
+- run bash commands
+- edit files
+- call the Part 2 tool registry
+- start the Part 2 SWE-agent loop
+- apply code from other agents
+
+The purpose is to create a safe boundary before any future tool execution.
+
+A future version can connect approved tasks to the Part 2 SWE-agent, but only after explicit local approval and with existing safety checks enabled.
