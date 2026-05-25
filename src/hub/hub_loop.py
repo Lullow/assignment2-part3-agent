@@ -6,6 +6,7 @@ from src.hub.hub_responder import build_llm_collaboration_response
 from src.hub.hub_response_guard import sanitize_hub_response
 from src.hub.hub_client import fetch_messages, post_message
 from src.hub.hub_intent import detect_hub_intent, should_handle_intent
+from src.hub.hub_task_proposal import build_task_proposal
 from src.hub.hub_config import (
     HUB_AGENT_NAME,
     HUB_DRY_RUN,
@@ -130,6 +131,28 @@ def build_response(
     return build_simple_response(message)
 
 
+def build_task_aware_response(
+    message: dict,
+    intent: str,
+    max_tokens: int | None = None,
+) -> str:
+    """
+    Build a response based on the detected hub intent.
+
+    Task execution requests are converted into safe task proposals.
+    The agent does not execute hub tasks automatically.
+    """
+
+    if intent == "execute_task":
+        return build_task_proposal(message, intent)
+
+    return build_response(
+        message,
+        intent=intent,
+        max_tokens=max_tokens,
+    )
+
+
 def run_hub_loop() -> None:
     """
     Run the hub polling loop.
@@ -222,7 +245,7 @@ def run_hub_loop() -> None:
                 print(f"Received mention from {sender}: {content}")
                 print(f"Detected intent: {intent}")
 
-                response = build_response(
+                response = build_task_aware_response(
                     message,
                     intent=intent,
                     max_tokens=controls.max_tokens,
@@ -255,7 +278,7 @@ def run_hub_loop() -> None:
 
             # Sleep after every successful polling cycle.
             time.sleep(HUB_POLL_INTERVAL_SECONDS)
-            
+
     except KeyboardInterrupt:
         controls.should_stop = True
         print("\nHub loop stopped by user.")
