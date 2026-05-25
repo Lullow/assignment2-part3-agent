@@ -19,6 +19,7 @@ from src.hub.hub_config import (
     HUB_EXECUTION_MODE,
     HUB_APPROVED_TASK_RUNNER,
     HUB_APPROVED_TASK_TOOL_MODE,
+    HUB_ENABLE_GROUP_MENTIONS,
     validate_hub_config,
 )
 from src.hub.hub_runtime_controls import (
@@ -26,6 +27,19 @@ from src.hub.hub_runtime_controls import (
     start_console_control_thread,
 )
 
+GROUP_MENTION_KEYWORDS = [
+    "@all",
+    "@agents",
+    "@bots",
+    "@all-agents",
+    "@all-bots",
+    "@alla",
+    "@alla-bottar",
+    "alla bottar",
+    "alla agenter",
+    "all agents",
+    "all bots",
+]
 
 def get_message_seq(message: dict) -> int | None:
     """
@@ -70,7 +84,9 @@ def should_respond_to_message(message: dict) -> bool:
 
     The agent should:
     - ignore its own messages
-    - only respond when mentioned
+    - ignore empty messages
+    - respond to direct mentions
+    - optionally respond to group mentions when enabled
     """
 
     sender = message.get("agent_name", "")
@@ -84,8 +100,10 @@ def should_respond_to_message(message: dict) -> bool:
     if not content:
         return False
 
-    # Only respond when the message explicitly mentions this agent.
-    return is_mention_for_agent(content)
+    mentions_this_agent = is_mention_for_agent(content)
+    mentions_group = HUB_ENABLE_GROUP_MENTIONS and is_group_mention(content)
+
+    return mentions_this_agent or mentions_group
 
 
 def build_simple_response(message: dict) -> str:
@@ -205,6 +223,20 @@ def build_task_aware_response(
     )
 
 
+def is_group_mention(content: str) -> bool:
+    """
+    Check whether a message appears to address all agents/bots.
+
+    Group mentions are optional because responding to broad messages can create
+    coordination noise if every agent replies at once.
+    """
+
+    normalized = content.lower()
+
+    return any(keyword in normalized for keyword in GROUP_MENTION_KEYWORDS)
+
+
+
 def run_hub_loop() -> None:
     """
     Run the hub polling loop.
@@ -253,6 +285,7 @@ def run_hub_loop() -> None:
     print(f"Approved task runner: {HUB_APPROVED_TASK_RUNNER}")
     print(f"LLM responder: {HUB_USE_LLM_RESPONDER}")
     print(f"Approved task tool mode: {HUB_APPROVED_TASK_TOOL_MODE}")
+    print(f"Group mentions: {HUB_ENABLE_GROUP_MENTIONS}")
     print(f"Max responses per run: {controls.max_responses_per_run}")
     print(f"Max tokens: {controls.max_tokens}")
     print(f"Poll interval: {HUB_POLL_INTERVAL_SECONDS} seconds")
