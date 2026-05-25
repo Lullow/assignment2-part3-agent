@@ -54,12 +54,14 @@ assignment2-part3-agent/
     │   ├── hub_client.py
     │   ├── hub_config.py
     │   ├── hub_delegation.py
+    │   ├── hub_execution_bridge.py
     │   ├── hub_intent.py
     │   ├── hub_loop.py
     │   ├── hub_responder.py
     │   ├── hub_response_guard.py
     │   ├── hub_runtime_controls.py
-    │   └── hub_task_proposal.py
+    │   ├── hub_task_proposal.py
+    │   └── hub_task_queue.py
     └── tools/
         ├── bash_tool.py
         ├── file_editor.py
@@ -150,6 +152,8 @@ HUB_MAX_RESPONSES_PER_RUN=3
 HUB_USE_LLM_RESPONDER=false
 HUB_RESPONDER_MAX_TOKENS=200
 HUB_EXECUTION_MODE=review_only
+HUB_APPROVED_TASK_RUNNER=placeholder
+HUB_APPROVED_TASK_TOOL_MODE=read_only
 ```
 
 | Variable | Purpose |
@@ -163,11 +167,43 @@ HUB_EXECUTION_MODE=review_only
 | `HUB_USE_LLM_RESPONDER` | Enables optional LLM-generated collaboration replies |
 | `HUB_RESPONDER_MAX_TOKENS` | Token cap for hub LLM replies |
 | `HUB_EXECUTION_MODE` | Controls hub task mode: review_only or manual_approval |
+| `HUB_APPROVED_TASK_RUNNER` | Controls what happens after local approval: placeholder or part2_agent |
+| `HUB_APPROVED_TASK_TOOL_MODE` | Controls approved Part 2 task behavior: read_only or local_tools |
 
 Execution modes:
 
 - `review_only`: hub tasks only produce proposals
 - `manual_approval`: hub tasks can be queued locally and require console approval
+
+Approved task runner modes:
+
+| Mode | Behavior |
+| --- | --- |
+| `placeholder` | Shows the approved task package only. No local agent execution. |
+| `part2_agent` | Runs the approved task through the local Part 2 SWE-agent after local approval. |
+
+Approved task tool modes:
+
+| Mode | Behavior |
+| --- | --- |
+| `read_only` | Approved tasks should inspect, analyze, and return a plan or text-only proposal. |
+| `local_tools` | Approved tasks may use the Part 2 tools with existing safety checks. |
+
+The default and safest runner mode is:
+
+```env
+HUB_APPROVED_TASK_RUNNER=placeholder
+HUB_APPROVED_TASK_TOOL_MODE=read_only
+```
+
+To allow approved tasks to run through the local Part 2 SWE-agent:
+
+```env
+HUB_APPROVED_TASK_RUNNER=part2_agent
+HUB_APPROVED_TASK_TOOL_MODE=local_tools
+```
+
+This only happens after a hub task has been queued and approved locally with `/approve TASK_ID`.
 
 ## Hub Smoke Test
 
@@ -223,6 +259,9 @@ While `src.hub.hub_loop` is running, type these commands into the local console:
 | `/resume` | Allow posting again |
 | `/tokens N` | Set the runtime LLM response token cap |
 | `/responses N` | Set the response cap for the current run |
+| `/tasks` | List pending hub tasks waiting for local approval |
+| `/approve TASK_ID` | Approve a queued hub task and pass it to the configured approved task runner |
+| `/reject TASK_ID` | Remove a queued hub task without running it |
 | `/quit` | Stop the hub loop cleanly |
 
 These controls are local only. They do not expose tool access through the hub.
@@ -348,6 +387,7 @@ The `.env` file is excluded from the image by `.dockerignore`.
 | Token control | `HUB_RESPONDER_MAX_TOKENS` and `/tokens N` |
 | Code exchange | Text-only code suggestions and patch-style proposals |
 | No unsafe hub tool access | Hub messages cannot call bash, file editing, the tool registry, or the SWE-agent loop |
+| Local approval bridge | `HUB_EXECUTION_MODE`, `HUB_APPROVED_TASK_RUNNER`, and `/approve TASK_ID` keep hub-originated execution behind local approval |
 | Docker support | `Dockerfile` and `.dockerignore` |
 | Hub downtime robustness | `RequestException` handling keeps the loop alive after request failures |
 
@@ -357,59 +397,8 @@ The `.env` file is excluded from the image by `.dockerignore`.
 - Session history is in memory for one run only.
 - Hub collaboration is text-only; it does not automatically execute or apply work from other agents.
 - The response guard is a simple defensive layer, not a complete secret scanner.
-- A future safe bridge could allow hub messages to create local tasks that require explicit local approval before tool execution.
+- `part2_agent` mode can run approved hub tasks through the local Part 2 SWE-agent, but only after explicit local console approval.
 
-## Demo
-
-See `DEMO.md` for a shorter walkthrough of local and Docker demo commands.
-
-
-
-## Approved Task Runner
-
-Approved hub tasks can be handled by `HUB_APPROVED_TASK_RUNNER`.
-
-Modes:
-
-- `placeholder`: show the approved task package only; no local agent execution
-- `part2_agent`: run the approved task through the local Part 2 SWE-agent after local approval
-
-The `part2_agent` mode uses the existing Part 2 agent loop and tool safety checks. It should only be enabled when the user wants approved hub tasks to execute locally.
-
-When `HUB_APPROVED_TASK_RUNNER=part2_agent`, approved tasks may use the Part 2 tools, including bash, read_file, and edit_file_section, subject to the existing safety checks.
-
-This mode should only be used with local approval and trusted task review.
-
-## Approved Task Runner
-
-Approved hub tasks can be handled by `HUB_APPROVED_TASK_RUNNER`.
-
-Available modes:
-
-| Mode | Behavior |
-|---|---|
-| `placeholder` | Shows the approved task package only. No local agent execution. |
-| `part2_agent` | Runs the approved task through the local Part 2 SWE-agent after local approval. |
-
-The default and safest mode is:
-
-```env
-HUB_APPROVED_TASK_RUNNER=placeholder
-
-To allow approved tasks to run through the local Part 2 SWE-agent:
-
-HUB_APPROVED_TASK_RUNNER=part2_agent
-
-This only happens after a hub task has been queued and approved locally with:
-
-/approve TASK_ID
-
-The hub still cannot directly trigger the local SWE-agent without local approval.
-
-
-Lägg också till denna säkerhetsnotis:
-
-```markdown
 ## Safety Note For `part2_agent` Mode
 
 When `HUB_APPROVED_TASK_RUNNER=part2_agent`, approved tasks may use the existing Part 2 agent loop.
@@ -424,3 +413,49 @@ These tool calls still go through the existing Part 2 safety layers, including b
 
 This mode should only be enabled when the user wants locally approved hub tasks to be executed by the local SWE-agent.
 
+## Demo
+
+See `DEMO.md` for a shorter walkthrough of local and Docker demo commands.
+
+## Approved Local Task Execution
+
+The hub agent can run locally approved hub tasks through the Part 2 SWE-agent when manual approval and the Part 2 runner are enabled.
+
+This is controlled by:
+
+```env
+HUB_EXECUTION_MODE=manual_approval
+HUB_APPROVED_TASK_RUNNER=part2_agent
+HUB_APPROVED_TASK_TOOL_MODE=local_tools
+```
+
+The execution flow is:
+
+```text
+Hub execute_task message
+-> detect execute_task intent
+-> create TASK PROPOSAL
+-> add task to local approval queue
+-> user approves locally with /approve TASK_ID
+-> approved task is sent to the Part 2 SWE-agent
+-> Part 2 agent may use its existing tools
+-> final result is returned locally
+```
+
+The hub cannot directly trigger tool execution. A task must first be approved locally.
+
+In `local_tools` mode, the approved task can use the existing Part 2 tools:
+
+- `bash`
+- `read_file`
+- `edit_file_section`
+
+These tools still go through the Part 2 safety layers:
+
+- bash safety checks
+- path safety checks
+- blocked sensitive paths
+- output limiting
+- max agent steps
+
+This means the agent can make real local changes, but only after local approval and only through the existing safety system.

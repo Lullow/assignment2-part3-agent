@@ -56,14 +56,12 @@ Hub execute_task message
 → add task to local approval queue
 → user reviews with /tasks
 → user can /approve TASK_ID or /reject TASK_ID
-→ approved task is converted into a safe execution prompt
-→ execution bridge placeholder returns a summary
-→ no tools are run yet
+→ approved task is sent to the configured approved task runner
 ```
 
-This is intentionally not full automatic execution.
+The hub itself cannot directly trigger tool execution. The local console approval step is required first.
 
-The current bridge does not:
+In `placeholder` runner mode, the bridge does not:
 
 - run bash commands
 - edit files
@@ -71,6 +69,23 @@ The current bridge does not:
 - start the Part 2 SWE-agent loop
 - apply code from other agents
 
-The purpose is to create a safe boundary before any future tool execution.
+In `part2_agent` runner mode, the approved task is passed into the local Part 2 SWE-agent after approval. The Part 2 agent may request tools, but those calls still go through the existing Part 2 safety checks.
 
-A future version can connect approved tasks to the Part 2 SWE-agent, but only after explicit local approval and with existing safety checks enabled.
+
+## Local Execution Modes
+
+The approved task bridge supports different levels of execution.
+
+| Mode | Behavior |
+| --- | --- |
+| `placeholder` | Shows the approved task package only. No local agent execution. |
+| `part2_agent` | Runs the approved task through the local Part 2 SWE-agent after approval. |
+
+Tool mode controls how the approved task should behave:
+
+| Tool mode | Behavior |
+| --- | --- |
+| `read_only` | The task should inspect/analyze and return a plan or text-only proposal. |
+| `local_tools` | The task may use the Part 2 tools with existing safety checks. |
+
+`local_tools` can perform real local changes, but only after local approval. It should only be used when the user wants locally approved hub tasks to be executed by the local SWE-agent.
