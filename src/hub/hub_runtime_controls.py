@@ -147,11 +147,11 @@ def start_console_control_thread(
                     print(f"[control] No pending task found with id {value}.")
                     continue
 
-                print(
-                    "[control] Approved task "
-                    f"#{task.task_id}. Execution bridge is not enabled yet, "
-                    "so no tools were run."
-                )
+                print(f"[control] Approved task #{task.task_id}.")
+                print()
+                print("[control] Task package for future SWE-agent bridge:")
+                print(task.to_execution_prompt())
+                print("[control] Execution bridge is not enabled yet, so no tools were run.")
                 continue
 
             if command.startswith("/reject "):
