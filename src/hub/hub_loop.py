@@ -178,79 +178,80 @@ def run_hub_loop() -> None:
     print(f"Poll interval: {HUB_POLL_INTERVAL_SECONDS} seconds")
     print("Press Ctrl+C to stop.\n")
 
-    while not controls.should_stop:
-        try:
-            # Fetch only messages newer than the latest sequence number we have seen.
-            messages = fetch_messages(since=last_seen)
-        except RequestException as error:
-            print(f"Could not fetch hub messages: {error}")
-            time.sleep(HUB_POLL_INTERVAL_SECONDS)
-            continue
-
-        for message in messages:
-            seq = get_message_seq(message)
-
-            # Update last_seen even for ignored messages so they are not processed again.
-            if seq is not None:
-                last_seen = max(last_seen, seq)
-
-            if not should_respond_to_message(message):
-                continue
-
-            sender = message.get("agent_name", "unknown-agent")
-            content = message.get("content", "")
-
-            # Detect intent before responding so the agent only handles relevant messages.
-            intent = detect_hub_intent(content)
-
-            # Ignore mentions that do not match supported collaboration intents.
-            if not should_handle_intent(intent):
-                print(f"Ignoring mention from {sender} with unsupported intent: {intent}")
-                continue
-
-            # Pause mode keeps the agent online but prevents it from posting.
-            if controls.paused:
-                print(f"Agent is paused. Ignoring mention from {sender}.")
-                continue
-
-            # Safety cap to avoid spamming the hub or using too many LLM calls.
-            if responses_sent >= controls.max_responses_per_run:
-                print("Max responses reached for this run. Staying online but not posting more responses.")
-                continue
-
-            print(f"Received mention from {sender}: {content}")
-            print(f"Detected intent: {intent}")
-
-            response = build_response(
-                message,
-                intent=intent,
-                max_tokens=controls.max_tokens,
-            )
-
-            # Final safety layer before anything is printed or posted to the shared hub.
-            response = sanitize_hub_response(response, fallback_sender=sender)
-
-            if HUB_DRY_RUN:
-                # Dry-run mode shows what would be posted without sending it to the hub.
-                responses_sent += 1
-                print("Dry run enabled. Would post response:")
-                print(response)
-                print(f"Dry-run responses this run: {responses_sent}/{controls.max_responses_per_run}")
-            else:
-                try:
-                    posted_seq = post_message(response)
-                except RequestException as error:
-                    print(f"Could not post hub response: {error}")
-                    time.sleep(HUB_POLL_INTERVAL_SECONDS)
-                    continue
-                responses_sent += 1
-
-                print(f"Posted response with seq: {posted_seq}")
-                print(f"Responses sent this run: {responses_sent}/{controls.max_responses_per_run}")
-
-                # Extra sleep after posting because POST is also a request.
+    try:
+        while not controls.should_stop:
+            try:
+                # Fetch only messages newer than the latest sequence number we have seen.
+                messages = fetch_messages(since=last_seen)
+            except RequestException as error:
+                print(f"Could not fetch hub messages: {error}")
                 time.sleep(HUB_POLL_INTERVAL_SECONDS)
+                continue
 
+            for message in messages:
+                seq = get_message_seq(message)
+
+                # Update last_seen even for ignored messages so they are not processed again.
+                if seq is not None:
+                    last_seen = max(last_seen, seq)
+
+                if not should_respond_to_message(message):
+                    continue
+
+                sender = message.get("agent_name", "unknown-agent")
+                content = message.get("content", "")
+
+                # Detect intent before responding so the agent only handles relevant messages.
+                intent = detect_hub_intent(content)
+
+                # Ignore mentions that do not match supported collaboration intents.
+                if not should_handle_intent(intent):
+                    print(f"Ignoring mention from {sender} with unsupported intent: {intent}")
+                    continue
+
+                # Pause mode keeps the agent online but prevents it from posting.
+                if controls.paused:
+                    print(f"Agent is paused. Ignoring mention from {sender}.")
+                    continue
+
+                # Safety cap to avoid spamming the hub or using too many LLM calls.
+                if responses_sent >= controls.max_responses_per_run:
+                    print("Max responses reached for this run. Staying online but not posting more responses.")
+                    continue
+
+                print(f"Received mention from {sender}: {content}")
+                print(f"Detected intent: {intent}")
+
+                response = build_response(
+                    message,
+                    intent=intent,
+                    max_tokens=controls.max_tokens,
+                )
+
+                # Final safety layer before anything is printed or posted to the shared hub.
+                response = sanitize_hub_response(response, fallback_sender=sender)
+
+                if HUB_DRY_RUN:
+                    # Dry-run mode shows what would be posted without sending it to the hub.
+                    responses_sent += 1
+                    print("Dry run enabled. Would post response:")
+                    print(response)
+                    print(f"Dry-run responses this run: {responses_sent}/{controls.max_responses_per_run}")
+                else:
+                    try:
+                        posted_seq = post_message(response)
+                    except RequestException as error:
+                        print(f"Could not post hub response: {error}")
+                        time.sleep(HUB_POLL_INTERVAL_SECONDS)
+                        continue
+                    responses_sent += 1
+
+                    print(f"Posted response with seq: {posted_seq}")
+                    print(f"Responses sent this run: {responses_sent}/{controls.max_responses_per_run}")
+
+    except KeyboardInterrupt:
+        controls.should_stop = True
+        print("\nHub loop stopped by user.")
         # Sleep between polling requests to respect the hub rate limit.
         time.sleep(HUB_POLL_INTERVAL_SECONDS)
 
