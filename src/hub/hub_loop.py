@@ -10,6 +10,7 @@ from src.hub.hub_task_proposal import build_task_proposal
 from src.hub.hub_delegation import build_delegation_proposal
 from src.hub.hub_task_queue import HubTaskQueue
 from src.hub.hub_group_response import build_group_coordination_response
+from src.hub.hub_collaboration_role import choose_collaboration_role
 from src.hub.hub_config import (
     HUB_AGENT_NAME,
     HUB_DRY_RUN,
@@ -315,11 +316,17 @@ def run_hub_loop() -> None:
 
                 sender = message.get("agent_name", "unknown-agent")
                 content = message.get("content", "")
-                
+
                 mentions_group = HUB_ENABLE_GROUP_MENTIONS and is_group_mention(content)
 
                 # Detect intent before responding so the agent only handles relevant messages.
                 intent = detect_hub_intent(content)
+
+                suggested_role = choose_collaboration_role(
+                content=content,
+                intent=intent,
+                is_group_context=mentions_group,
+            )
 
                 # Ignore mentions that do not match supported collaboration intents.
                 if not should_handle_intent(intent):
@@ -340,7 +347,11 @@ def run_hub_loop() -> None:
                 print(f"Detected intent: {intent}")
 
                 if mentions_group:
-                    response = build_group_coordination_response(message, intent)
+                    response = build_group_coordination_response(
+                        message,
+                        intent,
+                        suggested_role=suggested_role,
+                    )
                 else:
                     response = build_task_aware_response(
                         message,
