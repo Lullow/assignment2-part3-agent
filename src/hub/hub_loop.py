@@ -9,6 +9,7 @@ from src.hub.hub_intent import detect_hub_intent, should_handle_intent
 from src.hub.hub_task_proposal import build_task_proposal
 from src.hub.hub_delegation import build_delegation_proposal
 from src.hub.hub_task_queue import HubTaskQueue
+from src.hub.hub_group_response import build_group_coordination_response
 from src.hub.hub_config import (
     HUB_AGENT_NAME,
     HUB_DRY_RUN,
@@ -197,6 +198,7 @@ def build_task_aware_response(
         if HUB_EXECUTION_MODE == "manual_approval" and task_queue is not None:
             sender = message.get("agent_name", "unknown-agent")
             content = message.get("content", "")
+
             queued_task = task_queue.add_task(
                 sender=sender,
                 content=content,
@@ -313,6 +315,8 @@ def run_hub_loop() -> None:
 
                 sender = message.get("agent_name", "unknown-agent")
                 content = message.get("content", "")
+                
+                mentions_group = HUB_ENABLE_GROUP_MENTIONS and is_group_mention(content)
 
                 # Detect intent before responding so the agent only handles relevant messages.
                 intent = detect_hub_intent(content)
@@ -335,12 +339,15 @@ def run_hub_loop() -> None:
                 print(f"Received mention from {sender}: {content}")
                 print(f"Detected intent: {intent}")
 
-                response = build_task_aware_response(
-                    message,
-                    intent=intent,
-                    max_tokens=controls.max_tokens,
-                    task_queue=task_queue,
-                )
+                if mentions_group:
+                    response = build_group_coordination_response(message, intent)
+                else:
+                    response = build_task_aware_response(
+                        message,
+                        intent=intent,
+                        max_tokens=controls.max_tokens,
+                        task_queue=task_queue,
+                    )
 
                 # Final safety layer before anything is printed or posted to the shared hub.
                 response = sanitize_hub_response(response, fallback_sender=sender)
