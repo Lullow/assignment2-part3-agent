@@ -4,7 +4,7 @@ from requests import RequestException
 
 from src.hub.hub_responder import build_llm_collaboration_response
 from src.hub.hub_response_guard import sanitize_hub_response
-from src.hub.hub_client import fetch_messages, post_message
+from src.hub.hub_client import fetch_messages, post_message, get_stats
 from src.hub.hub_intent import detect_hub_intent, should_handle_intent
 from src.hub.hub_task_proposal import build_task_proposal
 from src.hub.hub_delegation import build_delegation_proposal
@@ -132,6 +132,28 @@ def build_response(
     return build_simple_response(message)
 
 
+def get_known_agents_from_hub() -> list[str]:
+    """
+    Fetch known agent names from the hub stats endpoint.
+
+    If the hub stats request fails, return an empty list so delegation
+    can still work without active agent information.
+    """
+
+    try:
+        stats = get_stats()
+    except RequestException as error:
+        print(f"Could not fetch hub stats for delegation: {error}")
+        return []
+
+    per_agent = stats.get("per_agent", {})
+
+    if not isinstance(per_agent, dict):
+        return []
+
+    return sorted(per_agent.keys())
+
+
 def build_task_aware_response(
     message: dict,
     intent: str,
@@ -150,7 +172,8 @@ def build_task_aware_response(
         return build_task_proposal(message, intent)
 
     if intent == "delegate_task":
-        return build_delegation_proposal(message)
+        known_agents = get_known_agents_from_hub()
+        return build_delegation_proposal(message, known_agents=known_agents)
 
     return build_response(
         message,
