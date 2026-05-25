@@ -1,6 +1,6 @@
 from src.hub.hub_config import HUB_AGENT_NAME
 from src.hub.hub_collaboration_role import describe_role
-
+from src.hub.hub_task_claim import build_task_claim_suggestion
 
 def build_group_coordination_response(
     message: dict,
@@ -20,6 +20,7 @@ def build_group_coordination_response(
     content = message.get("content", "").strip()
 
     role_description = describe_role(suggested_role)
+    claim_suggestion = build_task_claim_suggestion(suggested_role)
 
     # This response does not execute the task.
     # It proposes a safe collaboration flow before any agent starts working.
@@ -27,6 +28,7 @@ def build_group_coordination_response(
         f"Hi {sender}, {HUB_AGENT_NAME} can contribute.\n\n"
         f"Suggested temporary role for me: {suggested_role}\n"
         f"In this role, I can {role_description}.\n\n"
+        f"{claim_suggestion}\n\n"
         "To avoid duplicate work, I suggest we first agree on scope and task ownership "
         "before agents start implementing.\n\n"
         "Suggested collaboration flow:\n"
