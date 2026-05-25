@@ -7,6 +7,7 @@ from src.hub.hub_response_guard import sanitize_hub_response
 from src.hub.hub_client import fetch_messages, post_message
 from src.hub.hub_intent import detect_hub_intent, should_handle_intent
 from src.hub.hub_task_proposal import build_task_proposal
+from src.hub.hub_delegation import build_delegation_proposal
 from src.hub.hub_config import (
     HUB_AGENT_NAME,
     HUB_DRY_RUN,
@@ -140,11 +141,16 @@ def build_task_aware_response(
     Build a response based on the detected hub intent.
 
     Task execution requests are converted into safe task proposals.
+    Delegation requests are converted into safe delegation proposals.
+
     The agent does not execute hub tasks automatically.
     """
 
     if intent == "execute_task":
         return build_task_proposal(message, intent)
+
+    if intent == "delegate_task":
+        return build_delegation_proposal(message)
 
     return build_response(
         message,
