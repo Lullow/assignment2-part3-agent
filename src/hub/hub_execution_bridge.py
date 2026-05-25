@@ -3,7 +3,10 @@ from pathlib import Path
 
 from src.hub.hub_config import HUB_APPROVED_TASK_RUNNER
 from src.hub.hub_task_queue import QueuedHubTask
-
+from src.hub.hub_config import (
+    HUB_APPROVED_TASK_RUNNER,
+    HUB_APPROVED_TASK_TOOL_MODE,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 SRC_DIR = PROJECT_ROOT / "src"
@@ -56,8 +59,10 @@ def run_approved_task_with_part2_agent(task: QueuedHubTask) -> str:
     from config_loader import load_system_prompt
 
     system_prompt = load_system_prompt()
-    user_task = task.to_execution_prompt()
-
+    user_task = (
+        f"{task.to_execution_prompt()}\n\n"
+        f"{build_tool_mode_instructions()}"
+    )
     final_answer = run_agent(
         user_task=user_task,
         system_prompt=system_prompt,
@@ -68,6 +73,7 @@ def run_approved_task_with_part2_agent(task: QueuedHubTask) -> str:
         f"Task #{task.task_id}\n"
         f"Requested by: {task.sender}\n"
         f"Intent: {task.intent}\n\n"
+        f"Tool mode: {HUB_APPROVED_TASK_TOOL_MODE}\n"
         "Final answer from local Part 2 agent:\n"
         f"{final_answer}"
     )
@@ -92,3 +98,32 @@ def run_approved_task(task: QueuedHubTask) -> str:
         "Unsupported approved task runner mode. "
         "No bash commands, file edits, or Part 2 tools were run."
     )
+
+
+def build_tool_mode_instructions() -> str:
+    """
+    Build safety instructions for approved hub task execution.
+
+    This controls how the local Part 2 SWE-agent should treat the task.
+    """
+
+    if HUB_APPROVED_TASK_TOOL_MODE == "read_only":
+        return (
+            "Approved task tool mode: read_only\n"
+            "- Do not edit files.\n"
+            "- Do not use edit_file_section.\n"
+            "- Do not run bash commands that modify files or environment state.\n"
+            "- Prefer read_file or safe inspection commands only.\n"
+            "- Return a plan, analysis, or text-only patch proposal.\n"
+        )
+
+    if HUB_APPROVED_TASK_TOOL_MODE == "local_tools":
+        return (
+            "Approved task tool mode: local_tools\n"
+            "- You may use the existing Part 2 tools if needed.\n"
+            "- All tool calls must still pass bash safety, path safety, and output limits.\n"
+            "- Prefer the smallest safe change.\n"
+            "- Do not access secrets or private configuration.\n"
+        )
+
+    return "Approved task tool mode: unknown. Prefer safe read-only behavior.\n"

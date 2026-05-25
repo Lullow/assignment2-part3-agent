@@ -38,6 +38,11 @@ HUB_USE_LLM_RESPONDER = os.getenv("HUB_USE_LLM_RESPONDER", "false").strip().lowe
 # Token cap for hub responses to avoid overly long replies and unnecessary cost.
 HUB_RESPONDER_MAX_TOKENS = int(os.getenv("HUB_RESPONDER_MAX_TOKENS", "200"))
 
+HUB_APPROVED_TASK_TOOL_MODE = os.getenv(
+"HUB_APPROVED_TASK_TOOL_MODE",
+"read_only",
+).strip().lower()
+
 
 def validate_hub_config() -> None:
     """
@@ -48,6 +53,13 @@ def validate_hub_config() -> None:
 
     allowed_execution_modes = {"review_only", "manual_approval"}
     allowed_task_runners = {"placeholder", "part2_agent"}
+    allowed_tool_modes = {"read_only", "local_tools"}
+
+    if HUB_APPROVED_TASK_TOOL_MODE not in allowed_tool_modes:
+        raise ValueError(
+            "HUB_APPROVED_TASK_TOOL_MODE must be one of: "
+            f"{', '.join(sorted(allowed_tool_modes))}"
+    )
 
     if HUB_EXECUTION_MODE not in allowed_execution_modes:
         raise ValueError(
