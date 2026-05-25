@@ -24,6 +24,7 @@ The agent can:
 - Run the hub loop in dry-run mode before posting live responses
 - Optionally generate short LLM-based hub replies without exposing local tools
 - Sanitize hub responses before dry-run output or live posting
+- Adjust hub runtime limits from the local console while the loop is running
 
 ## Main Difference From Part 1
 
@@ -71,6 +72,7 @@ assignment2-part3-agent/
     │   ├── hub_config.py
     │   ├── hub_intent.py
     │   ├── hub_loop.py
+    │   ├── hub_runtime_controls.py
     │   ├── hub_responder.py
     │   └── hub_response_guard.py
     └── tools/
@@ -363,6 +365,7 @@ At this stage, the hub agent runs in **safe hub mode**:
 - does not expose bash or file-editing tools to hub messages
 - can optionally use a text-only LLM responder for short collaboration replies
 - sanitizes responses before they are printed or posted
+- supports local runtime commands for pause/resume, token limits, response limits, status, and shutdown
 
 The Part 2 SWE-agent core is intentionally kept separate from the Part 3 hub layer.
 
@@ -375,6 +378,7 @@ src/
 │   ├── hub_config.py
 │   ├── hub_intent.py
 │   ├── hub_loop.py
+│   ├── hub_runtime_controls.py
 │   ├── hub_responder.py
 │   └── hub_response_guard.py
 │
@@ -447,6 +451,7 @@ Safe hub mode is enabled.
 Dry run: True
 LLM responder: False
 Max responses per run: 3
+Max tokens: 200
 Poll interval: 1.2 seconds
 Press Ctrl+C to stop.
 ```
@@ -555,6 +560,7 @@ Implemented:
 - `hub_config.py`: environment-based hub configuration and validation
 - `hub_intent.py`: lightweight keyword-based intent detection for hub messages
 - `hub_loop.py`: polling loop, mention detection, own-message filtering, dry-run mode, response cap, and rate-limit sleep
+- `hub_runtime_controls.py`: local console controls for pause/resume, token limits, response limits, status, and shutdown
 - `hub_responder.py`: optional text-only LLM collaboration responder
 - `hub_response_guard.py`: response trimming, empty-response fallback, length limiting, and basic secret-pattern blocking
 - `Dockerfile`: container entrypoint for running the safe hub loop
@@ -622,6 +628,21 @@ The responder is text-only. It cannot:
 - invoke the Part 2 SWE-agent loop
 
 This keeps the hub integration safer while still allowing more meaningful collaboration.
+
+### Runtime Controls
+
+While the hub loop is running, local console commands can adjust behavior without restarting the process:
+
+| Command | Effect |
+| --- | --- |
+| `/status` | Prints current pause state, response limit, and token limit |
+| `/pause` | Keeps polling but stops posting responses |
+| `/resume` | Allows responses again after a pause |
+| `/tokens N` | Changes the runtime token cap for LLM responses |
+| `/responses N` | Changes the maximum number of responses for the current run |
+| `/quit` | Stops the hub loop cleanly |
+
+These controls only affect the local running process. They do not expose any new hub-triggered tool access.
 
 ### Response Guard
 
@@ -733,3 +754,29 @@ Hub message
 ```
 
 This would preserve safety while allowing deeper collaboration. Until then, code exchange stays text-only.
+
+
+
+## Assignment 2 Part 3 – Requirement Mapping
+
+| Requirement | Implementation |
+|---|---|
+| Agent communicates through shared RunPod hub | `src/hub/hub_client.py` and `src/hub/hub_loop.py` use the hub REST API |
+| Agent does not reply to every message | The loop ignores old messages, ignores its own messages, only responds to mentions, and uses an intent filter |
+| Agent acts as a team-player | `src/hub/hub_responder.py` uses a collaboration-focused system prompt |
+| Agent must not leak sensitive information | System prompt + `src/hub/hub_response_guard.py` block obvious secret/config-related output |
+| Agent has built-in rate limiting | `HUB_POLL_INTERVAL_SECONDS` and sleeps between GET/POST requests |
+| Runtime control through console | `src/hub/hub_runtime_controls.py` supports `/status`, `/pause`, `/resume`, `/tokens`, `/responses`, `/quit` |
+| Maximum token spending | `HUB_RESPONDER_MAX_TOKENS` and runtime `/tokens N` |
+| Meaningful collaboration | Optional LLM responder can answer planning, review, status, help and question intents |
+| Code exchange between agents | Agent can share text-only code proposals and patch-style suggestions |
+| No direct unsafe tool access from hub | Hub messages cannot directly call bash, file editing, tool registry, or the Part 2 SWE-agent loop |
+| Docker/container support | `Dockerfile` and `.dockerignore` allow containerized execution |
+| Robustness against hub downtime | `RequestException` handling prevents the loop from crashing when the hub is unavailable |
+
+
+## Current Limitation
+
+The current hub integration supports safe text-based collaboration and code proposals.
+
+It does not automatically apply code from other agents, execute bash commands, or edit local files based on hub messages. This is intentional for safety. A future version could add a controlled safety bridge where hub messages create local task proposals that require explicit approval before the Part 2 SWE-agent can use tools.
