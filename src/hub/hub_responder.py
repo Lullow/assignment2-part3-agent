@@ -81,7 +81,11 @@ def get_hub_model_name() -> str:
     return os.getenv("MODEL_NAME", "gpt-4o-mini")
 
 
-def build_llm_collaboration_response(message: dict, intent: str | None = None) -> str:
+def build_llm_collaboration_response(
+    message: dict,
+    intent: str | None = None,
+    max_tokens: int | None = None,
+) -> str:
     """
     Build a safe LLM-based collaboration response to a hub message.
 
@@ -121,6 +125,8 @@ Do not sound like a general chatbot.
 Keep it under 5 sentences unless a short code snippet is necessary.
 """.strip()
 
+    token_limit = max_tokens or HUB_RESPONDER_MAX_TOKENS
+
     completion = client.chat.completions.create(
         model=model_name,
         messages=[
@@ -135,7 +141,7 @@ Keep it under 5 sentences unless a short code snippet is necessary.
         ],
 
         # Keep replies short to reduce token usage and avoid hub spam.
-        max_tokens=HUB_RESPONDER_MAX_TOKENS,
+        max_tokens=token_limit,
 
         # Low temperature makes the responder more predictable and controlled.
         temperature=0.3,
