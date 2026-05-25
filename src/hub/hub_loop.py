@@ -8,6 +8,7 @@ from src.hub.hub_client import fetch_messages, post_message, get_stats
 from src.hub.hub_intent import detect_hub_intent, should_handle_intent
 from src.hub.hub_task_proposal import build_task_proposal
 from src.hub.hub_delegation import build_delegation_proposal
+from src.hub.hub_task_queue import HubTaskQueue
 from src.hub.hub_config import (
     HUB_AGENT_NAME,
     HUB_DRY_RUN,
@@ -159,6 +160,7 @@ def build_task_aware_response(
     message: dict,
     intent: str,
     max_tokens: int | None = None,
+    task_queue: HubTaskQueue | None = None,
 ) -> str:
     """
     Build a response based on the detected hub intent.
@@ -170,7 +172,25 @@ def build_task_aware_response(
     """
 
     if intent == "execute_task":
-        return build_task_proposal(message, intent)
+        proposal = build_task_proposal(message, intent)
+
+        if HUB_EXECUTION_MODE == "manual_approval" and task_queue is not None:
+            sender = message.get("agent_name", "unknown-agent")
+            content = message.get("content", "")
+            queued_task = task_queue.add_task(
+                sender=sender,
+                content=content,
+                intent=intent,
+            )
+
+            proposal += (
+                "\n\n"
+                f"Queued locally for manual approval as task #{queued_task.task_id}.\n"
+                "Use `/tasks` in the local console to view pending tasks.\n"
+                f"Use `/approve {queued_task.task_id}` or `/reject {queued_task.task_id}`."
+            )
+
+        return proposal
 
     if intent == "delegate_task":
         known_agents = get_known_agents_from_hub()
@@ -201,8 +221,10 @@ def run_hub_loop() -> None:
         max_tokens=HUB_RESPONDER_MAX_TOKENS,
     )
 
+    task_queue = HubTaskQueue()
+
     # Start local console controls in the background without blocking hub polling.
-    start_console_control_thread(controls)
+    start_console_control_thread(controls, task_queue=task_queue)
 
     responses_sent = 0
     last_seen = 0
@@ -280,6 +302,7 @@ def run_hub_loop() -> None:
                     message,
                     intent=intent,
                     max_tokens=controls.max_tokens,
+                    task_queue=task_queue,
                 )
 
                 # Final safety layer before anything is printed or posted to the shared hub.

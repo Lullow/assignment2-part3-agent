@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import threading
+from src.hub.hub_task_queue import HubTaskQueue
 
 
 @dataclass
@@ -24,7 +25,10 @@ class HubRuntimeControls:
     max_tokens: int
 
 
-def start_console_control_thread(controls: HubRuntimeControls) -> threading.Thread:
+def start_console_control_thread(
+    controls: HubRuntimeControls,
+    task_queue: HubTaskQueue | None = None,
+) -> threading.Thread:
     """
     Start a background thread for local runtime control commands.
 
@@ -35,6 +39,9 @@ def start_console_control_thread(controls: HubRuntimeControls) -> threading.Thre
     - /tokens N
     - /responses N
     - /quit
+    - /tasks
+    - /approve TASK_ID
+    - /reject TASK_ID
     """
 
     def console_loop() -> None:
@@ -103,9 +110,74 @@ def start_console_control_thread(controls: HubRuntimeControls) -> threading.Thre
                 print("[control] Stopping hub loop...")
                 continue
 
+            if command == "/tasks":
+                if task_queue is None:
+                    print("[control] No task queue is available.")
+                    continue
+
+                tasks = task_queue.list_tasks()
+
+                if not tasks:
+                    print("[control] No pending hub tasks.")
+                    continue
+
+                print("[control] Pending hub tasks:")
+                for task in tasks:
+                    print(
+                        f"  #{task.task_id} from {task.sender} "
+                        f"intent={task.intent} created_at={task.created_at}"
+                    )
+                    print(f"     {task.content}")
+                continue
+
+            if command.startswith("/approve "):
+                if task_queue is None:
+                    print("[control] No task queue is available.")
+                    continue
+
+                value = command.removeprefix("/approve ").strip()
+
+                if not value.isdigit():
+                    print("[control] Usage: /approve TASK_ID")
+                    continue
+
+                task = task_queue.remove_task(int(value))
+
+                if task is None:
+                    print(f"[control] No pending task found with id {value}.")
+                    continue
+
+                print(
+                    "[control] Approved task "
+                    f"#{task.task_id}. Execution bridge is not enabled yet, "
+                    "so no tools were run."
+                )
+                continue
+
+            if command.startswith("/reject "):
+                if task_queue is None:
+                    print("[control] No task queue is available.")
+                    continue
+
+                value = command.removeprefix("/reject ").strip()
+
+                if not value.isdigit():
+                    print("[control] Usage: /reject TASK_ID")
+                    continue
+
+                task = task_queue.remove_task(int(value))
+
+                if task is None:
+                    print(f"[control] No pending task found with id {value}.")
+                    continue
+
+                print(f"[control] Rejected task #{task.task_id}.")
+                continue
+
             print(
                 "[control] Unknown command. Available commands: "
-                "/status, /pause, /resume, /tokens N, /responses N, /quit"
+                "/status, /pause, /resume, /tokens N, /responses N, "
+                "/tasks, /approve TASK_ID, /reject TASK_ID, /quit"
             )
 
     # Run console input in a daemon thread so it does not block the hub polling loop.
