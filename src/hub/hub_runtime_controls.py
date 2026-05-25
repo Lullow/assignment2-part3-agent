@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 import threading
 from src.hub.hub_task_queue import HubTaskQueue
-from src.hub.hub_execution_bridge import run_approved_task_placeholder
+from src.hub.hub_execution_bridge import run_approved_task
 
 @dataclass
 class HubRuntimeControls:
@@ -150,7 +150,7 @@ def start_console_control_thread(
                 print(f"[control] Approved task #{task.task_id}.")
                 print()
                 print("[control] Task package for future SWE-agent bridge:")
-                print(run_approved_task_placeholder(task))
+                print(run_approved_task(task))
                 continue
 
             if command.startswith("/reject "):

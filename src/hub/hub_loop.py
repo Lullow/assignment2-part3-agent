@@ -17,6 +17,7 @@ from src.hub.hub_config import (
     HUB_USE_LLM_RESPONDER,
     HUB_RESPONDER_MAX_TOKENS,
     HUB_EXECUTION_MODE,
+    HUB_APPROVED_TASK_RUNNER,
     validate_hub_config,
 )
 from src.hub.hub_runtime_controls import (
@@ -248,6 +249,7 @@ def run_hub_loop() -> None:
     print("Safe hub mode is enabled.")
     print(f"Dry run: {HUB_DRY_RUN}")
     print(f"Execution mode: {HUB_EXECUTION_MODE}")
+    print(f"Approved task runner: {HUB_APPROVED_TASK_RUNNER}")
     print(f"LLM responder: {HUB_USE_LLM_RESPONDER}")
     print(f"Max responses per run: {controls.max_responses_per_run}")
     print(f"Max tokens: {controls.max_tokens}")

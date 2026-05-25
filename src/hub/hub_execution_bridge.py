@@ -1,4 +1,12 @@
+import sys
+from pathlib import Path
+
+from src.hub.hub_config import HUB_APPROVED_TASK_RUNNER
 from src.hub.hub_task_queue import QueuedHubTask
+
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+SRC_DIR = PROJECT_ROOT / "src"
 
 
 def prepare_task_for_local_agent(task: QueuedHubTask) -> str:
@@ -9,24 +17,78 @@ def prepare_task_for_local_agent(task: QueuedHubTask) -> str:
     the Part 2 agent loop. It only returns the safe execution prompt.
     """
 
-    # Convert the approved queued task into a prompt format the local agent can use later.
     return task.to_execution_prompt()
 
 
 def run_approved_task_placeholder(task: QueuedHubTask) -> str:
     """
-    Placeholder for a future safe bridge to the Part 2 SWE-agent.
+    Placeholder for a safe bridge to the Part 2 SWE-agent.
 
-    The bridge is intentionally not active yet.
+    The bridge is intentionally not active in placeholder mode.
     """
 
-    # Prepare the prompt, but do not pass it into any tool-running agent yet.
     prompt = prepare_task_for_local_agent(task)
 
-    # Return a clear status message proving that no execution happened.
     return (
         "APPROVED TASK READY FOR FUTURE EXECUTION BRIDGE\n\n"
         f"{prompt}\n"
-        "Bridge status: not enabled.\n"
+        "Bridge status: placeholder mode.\n"
+        "No bash commands, file edits, or Part 2 tools were run."
+    )
+
+
+def run_approved_task_with_part2_agent(task: QueuedHubTask) -> str:
+    """
+    Run an approved hub task through the local Part 2 SWE-agent.
+
+    This should only be called after explicit local approval.
+    The Part 2 agent's existing tool safety checks still apply.
+    """
+
+    # The Part 2 files currently use script-style imports like:
+    # from agent_loop import ...
+    # from llm_client import ...
+    # Therefore we add src/ to sys.path here instead of refactoring Part 2 now.
+    if str(SRC_DIR) not in sys.path:
+        sys.path.insert(0, str(SRC_DIR))
+
+    from agent_loop import run_agent
+    from config_loader import load_system_prompt
+
+    system_prompt = load_system_prompt()
+    user_task = task.to_execution_prompt()
+
+    final_answer = run_agent(
+        user_task=user_task,
+        system_prompt=system_prompt,
+    )
+
+    return (
+        "APPROVED HUB TASK EXECUTED THROUGH LOCAL PART 2 SWE-AGENT\n\n"
+        f"Task #{task.task_id}\n"
+        f"Requested by: {task.sender}\n"
+        f"Intent: {task.intent}\n\n"
+        "Final answer from local Part 2 agent:\n"
+        f"{final_answer}"
+    )
+
+
+def run_approved_task(task: QueuedHubTask) -> str:
+    """
+    Run an approved task according to HUB_APPROVED_TASK_RUNNER.
+
+    Supported modes:
+    - placeholder: do not execute anything
+    - part2_agent: run the local Part 2 SWE-agent after approval
+    """
+
+    if HUB_APPROVED_TASK_RUNNER == "placeholder":
+        return run_approved_task_placeholder(task)
+
+    if HUB_APPROVED_TASK_RUNNER == "part2_agent":
+        return run_approved_task_with_part2_agent(task)
+
+    return (
+        "Unsupported approved task runner mode. "
         "No bash commands, file edits, or Part 2 tools were run."
     )

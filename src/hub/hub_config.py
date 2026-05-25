@@ -28,6 +28,9 @@ HUB_POLL_INTERVAL_SECONDS = float(os.getenv("HUB_POLL_INTERVAL_SECONDS", "1.2"))
 # Default is review_only so the agent gives feedback/suggestions instead of executing work.
 HUB_EXECUTION_MODE = os.getenv("HUB_EXECUTION_MODE", "review_only").strip().lower()
 
+# Controls what happens after a hub task receives explicit local approval.
+HUB_APPROVED_TASK_RUNNER = os.getenv("HUB_APPROVED_TASK_RUNNER", "placeholder").strip().lower()
+
 
 # Safety switch: keep LLM responses disabled by default until explicitly enabled.
 HUB_USE_LLM_RESPONDER = os.getenv("HUB_USE_LLM_RESPONDER", "false").strip().lower() == "true"
@@ -44,11 +47,18 @@ def validate_hub_config() -> None:
     """
 
     allowed_execution_modes = {"review_only", "manual_approval"}
+    allowed_task_runners = {"placeholder", "part2_agent"}
 
     if HUB_EXECUTION_MODE not in allowed_execution_modes:
         raise ValueError(
             "HUB_EXECUTION_MODE must be one of: "
             f"{', '.join(sorted(allowed_execution_modes))}"
+        )
+
+    if HUB_APPROVED_TASK_RUNNER not in allowed_task_runners:
+        raise ValueError(
+            "HUB_APPROVED_TASK_RUNNER must be one of: "
+            f"{', '.join(sorted(allowed_task_runners))}"
         )
 
     if not HUB_BASE_URL:
