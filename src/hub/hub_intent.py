@@ -30,6 +30,12 @@ EXECUTE_TASK_KEYWORDS = [
     "write code",
     "make this",
     "do this",
+    "inspect",
+    "inspect your repo",
+    "analyze",
+    "analyse",
+    "investigate",
+    "check your repo",
     "utför",
     "bygg",
     "skapa",
@@ -37,6 +43,9 @@ EXECUTE_TASK_KEYWORDS = [
     "fixa",
     "ändra",
     "uppdatera",
+    "analysera",
+    "undersök",
+    "kolla ditt repo",
 ]
 
 
@@ -87,8 +96,16 @@ PLAN_KEYWORDS = [
     "coordinate",
     "roadmap",
     "what should we do",
+    "suggest",
+    "suggest one safe contribution",
+    "safe contribution",
+    "team project",
+    "contribution",
     "nästa steg",
     "planera",
+    "föreslå",
+    "bidrag",
+    "säkert bidrag",
 ]
 
 

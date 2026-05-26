@@ -345,6 +345,7 @@ def run_hub_loop() -> None:
 
                 print(f"Received mention from {sender}: {content}")
                 print(f"Detected intent: {intent}")
+                print(f"Suggested temporary role: {suggested_role}")
 
                 if mentions_group:
                     response = build_group_coordination_response(
