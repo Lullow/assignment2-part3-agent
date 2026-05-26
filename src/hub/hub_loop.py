@@ -11,6 +11,12 @@ from src.hub.hub_delegation import build_delegation_proposal
 from src.hub.hub_task_queue import HubTaskQueue
 from src.hub.hub_group_response import build_group_coordination_response
 from src.hub.hub_collaboration_role import choose_collaboration_role
+
+from src.hub.hub_coordination_followup import (
+    should_post_coordination_followup,
+    build_coordination_followup_response,
+)
+
 from src.hub.hub_config import (
     HUB_AGENT_NAME,
     HUB_DRY_RUN,
@@ -24,6 +30,7 @@ from src.hub.hub_config import (
     HUB_ENABLE_GROUP_MENTIONS,
     validate_hub_config,
 )
+
 from src.hub.hub_runtime_controls import (
     HubRuntimeControls,
     start_console_control_thread,
@@ -263,9 +270,12 @@ def run_hub_loop() -> None:
     # Start local console controls in the background without blocking hub polling.
     start_console_control_thread(controls, task_queue=task_queue)
 
+
     responses_sent = 0
     last_seen = 0
-
+    active_group_task = False
+    coordination_followups_sent = 0
+    
     try:
         # Load existing messages once so the agent does not reply to old hub history.
         existing_messages = fetch_messages(since=0)
@@ -311,13 +321,61 @@ def run_hub_loop() -> None:
                 if seq is not None:
                     last_seen = max(last_seen, seq)
 
-                if not should_respond_to_message(message):
-                    continue
-
                 sender = message.get("agent_name", "unknown-agent")
                 content = message.get("content", "")
 
+                if should_post_coordination_followup(
+                    sender=sender,
+                    content=content,
+                    active_group_task=active_group_task,
+                ):
+                    if coordination_followups_sent >= 1:
+                        continue
+
+                    if controls.paused:
+                        print(f"Agent is paused. Ignoring coordination follow-up from {sender}.")
+                        continue
+
+                    if responses_sent >= controls.max_responses_per_run:
+                        print("Max responses reached. Skipping coordination follow-up.")
+                        continue
+
+                    response = build_coordination_followup_response(
+                        sender=sender,
+                        content=content,
+                    )
+
+                    response = sanitize_hub_response(response, fallback_sender=sender)
+
+                    if HUB_DRY_RUN:
+                        responses_sent += 1
+                        coordination_followups_sent += 1
+                        print("Dry run enabled. Would post coordination follow-up:")
+                        print(response)
+                        print(f"Dry-run responses this run: {responses_sent}/{controls.max_responses_per_run}")
+                    else:
+                        try:
+                            posted_seq = post_message(response)
+                        except RequestException as error:
+                            print(f"Could not post coordination follow-up: {error}")
+                            time.sleep(HUB_POLL_INTERVAL_SECONDS)
+                            continue
+
+                        responses_sent += 1
+                        coordination_followups_sent += 1
+                        print(f"Posted coordination follow-up with seq: {posted_seq}")
+                        print(f"Responses sent this run: {responses_sent}/{controls.max_responses_per_run}")
+                        time.sleep(HUB_POLL_INTERVAL_SECONDS)
+
+                    continue
+
+                if not should_respond_to_message(message):
+                    continue
+
                 mentions_group = HUB_ENABLE_GROUP_MENTIONS and is_group_mention(content)
+
+                if mentions_group:
+                    active_group_task = True
 
                 # Detect intent before responding so the agent only handles relevant messages.
                 intent = detect_hub_intent(content)
