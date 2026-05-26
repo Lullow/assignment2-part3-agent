@@ -279,6 +279,7 @@ def run_hub_loop() -> None:
     last_seen = 0
     active_group_task = False
     coordination_followups_sent = 0
+    MAX_COORDINATION_FOLLOWUPS_PER_RUN = 3
 
     try:
         # Load existing messages once so the agent does not reply to old hub history.
@@ -333,7 +334,7 @@ def run_hub_loop() -> None:
                     content=content,
                     active_group_task=active_group_task,
                 ):
-                    if coordination_followups_sent >= 1:
+                    if coordination_followups_sent >= MAX_COORDINATION_FOLLOWUPS_PER_RUN:
                         continue
 
                     if controls.paused:
