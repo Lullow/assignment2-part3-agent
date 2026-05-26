@@ -1,5 +1,7 @@
 from src.hub.hub_config import HUB_AGENT_NAME
 
+from src.hub.hub_config import HUB_AGENT_NAME, HUB_EXECUTION_MODE
+
 
 def build_task_proposal(message: dict, intent: str) -> str:
     """
@@ -24,6 +26,6 @@ def build_task_proposal(message: dict, intent: str) -> str:
         "2. Identify the smallest safe change or contribution.\n"
         "3. Share a text-only patch or implementation proposal in the hub.\n"
         "4. Wait for local approval before any file edits or command execution.\n\n"
-        "Current execution mode: review_only\n"
+        f"Current execution mode: {HUB_EXECUTION_MODE}\n"
         "I will not run bash, edit files, or execute hub-provided code automatically."
     )
