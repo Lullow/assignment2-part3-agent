@@ -176,3 +176,37 @@ PY
 - The agent chooses a temporary role.
 - The response suggests scope and task ownership first.
 - The agent does not immediately execute the full group task.
+
+
+
+## Final Validation
+
+### 1. Static validation
+- `git status` clean
+- `python -m compileall src` passed
+- Docker build passed
+- `.env` is not tracked
+- `.env.example` exists
+
+### 2. Hub validation
+- Direct mention works
+- Group mention works
+- Agent ignores old history
+- Agent ignores its own messages
+
+### 3. Safety validation
+- Hub messages are treated as untrusted input
+- Hub cannot directly execute tools
+- Manual approval is required for hub-originated tasks
+- Secrets and `.env` are not exposed
+
+### 4. Approved task validation
+- `placeholder` runner works
+- `part2_agent + read_only` works
+- `part2_agent + local_tools` works on small approved task
+- Approved task report is generated
+
+### 5. Collaboration validation
+- Broad group task triggers coordination-first response
+- Agent proposes scope and task ownership
+- Agent avoids duplicate work and leadership takeover
