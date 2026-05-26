@@ -246,7 +246,6 @@ def is_group_mention(content: str) -> bool:
     return any(keyword in normalized for keyword in GROUP_MENTION_KEYWORDS)
 
 
-
 def run_hub_loop() -> None:
     """
     Run the hub polling loop.
@@ -270,12 +269,11 @@ def run_hub_loop() -> None:
     # Start local console controls in the background without blocking hub polling.
     start_console_control_thread(controls, task_queue=task_queue)
 
-
     responses_sent = 0
     last_seen = 0
     active_group_task = False
     coordination_followups_sent = 0
-    
+
     try:
         # Load existing messages once so the agent does not reply to old hub history.
         existing_messages = fetch_messages(since=0)
@@ -381,10 +379,10 @@ def run_hub_loop() -> None:
                 intent = detect_hub_intent(content)
 
                 suggested_role = choose_collaboration_role(
-                content=content,
-                intent=intent,
-                is_group_context=mentions_group,
-            )
+                    content=content,
+                    intent=intent,
+                    is_group_context=mentions_group,
+                )
 
                 # Ignore mentions that do not match supported collaboration intents.
                 if not should_handle_intent(intent):
@@ -450,7 +448,6 @@ def run_hub_loop() -> None:
     except KeyboardInterrupt:
         controls.should_stop = True
         print("\nHub loop stopped by user.")
-
 
 
 if __name__ == "__main__":

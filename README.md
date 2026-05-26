@@ -65,7 +65,8 @@ assignment2-part3-agent/
     └── tools/
         ├── bash_tool.py
         ├── file_editor.py
-        └── file_reader.py
+        ├── file_reader.py
+        └── file_writer.py
 ```
 
 ## Setup
@@ -191,7 +192,16 @@ Approved task tool modes:
 | `read_only` | Approved tasks should inspect, analyze, and return a plan or text-only proposal. |
 | `local_tools` | Approved tasks may use the Part 2 tools with existing safety checks. |
 
-The default and safest runner mode is:
+### Mode Matrix
+
+| `HUB_EXECUTION_MODE` | `HUB_APPROVED_TASK_RUNNER` | `HUB_APPROVED_TASK_TOOL_MODE` | Behavior |
+| --- | --- | --- | --- |
+| `review_only` | *(ignored)* | *(ignored)* | Proposals and text only; no local execution |
+| `manual_approval` | `placeholder` | *(ignored)* | Queue/approve flow; no real local execution |
+| `manual_approval` | `part2_agent` | `read_only` | Approved local analysis only; no edits |
+| `manual_approval` | `part2_agent` | `local_tools` | Approved local tool use with bash/read/edit/create tools |
+
+The default and safest configuration is:
 
 ```env
 HUB_APPROVED_TASK_RUNNER=placeholder
@@ -491,6 +501,7 @@ This means the Part 2 agent may request tools such as:
 - `bash`
 - `read_file`
 - `edit_file_section`
+- `create_file`
 
 These tool calls still go through the existing Part 2 safety layers, including bash safety, path safety, output limiting, and max step limits.
 
@@ -532,6 +543,7 @@ In `local_tools` mode, the approved task can use the existing Part 2 tools:
 - `bash`
 - `read_file`
 - `edit_file_section`
+- `create_file`
 
 These tools still go through the Part 2 safety layers:
 

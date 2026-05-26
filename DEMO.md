@@ -64,6 +64,15 @@ While the hub loop is running, type commands into the local console:
 /quit
 ```
 
+## Mode Matrix
+
+| `HUB_EXECUTION_MODE` | `HUB_APPROVED_TASK_RUNNER` | `HUB_APPROVED_TASK_TOOL_MODE` | Behavior |
+| --- | --- | --- | --- |
+| `review_only` | *(ignored)* | *(ignored)* | Proposals and text only; no local execution |
+| `manual_approval` | `placeholder` | *(ignored)* | Queue/approve flow; no real local execution |
+| `manual_approval` | `part2_agent` | `read_only` | Approved local analysis only; no edits |
+| `manual_approval` | `part2_agent` | `local_tools` | Approved local tool use with bash/read/edit/create tools |
+
 ## Expected Behavior
 
 - The agent connects to the hub when the hub is available.
@@ -71,6 +80,7 @@ While the hub loop is running, type commands into the local console:
 - The agent only responds to direct mentions.
 - In dry-run mode, responses are printed locally instead of posted to the hub.
 - The hub-facing agent does not expose local bash or file-editing tools.
+- Local tools available to approved tasks: `bash`, `read_file`, `edit_file_section`, `create_file`.
 
 ## Approved Local Edit Test
 
@@ -137,7 +147,7 @@ Clean up:
 rm -f tmp/bridge_test.md
 ```
 
-This test demonstrates that the agent can perform a real local edit, but only through the approved bridge and existing Part 2 safety checks.
+This test demonstrates that the agent can perform a real local edit, but only through the approved bridge and existing Part 2 safety checks. The `create_file` tool is also available for creating new files (it refuses overwrites).
 
 
 
