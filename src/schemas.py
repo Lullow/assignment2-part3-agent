@@ -16,6 +16,7 @@ class ToolCall(BaseModel):
     "bash",
     "read_file",
     "edit_file_section",
+    "create_file",
   ] = Field(
     description="The name of the tool the model wants to call"
   )
@@ -27,10 +28,10 @@ class ToolCall(BaseModel):
     description="Bash command to run when using the bash tool"
   )
 
-  # Used when tool_name == "read_file" or "edit_file_section"
+  # Used when tool_name == "read_file", "edit_file_section", or "create_file"
   path: str | None = Field(
     default=None,
-    description="Path to the file that should be read or edited."
+    description="Path to the file that should be read, edited, or created."
   )
 
   # Used when tool_name == "edit_file_section"
@@ -39,10 +40,10 @@ class ToolCall(BaseModel):
     description="Exact text section that should be replaced."
   )
 
-  # Used when tool_name == "edit_file_section"
+  # Used when tool_name == "edit_file_section" or "create_file"
   new_text: str | None = Field(
     default=None,
-    description="New text that should replace old_text"
+    description="New text that should replace old_text or become the new file content."
   )
 
 
@@ -186,6 +187,13 @@ def validate_agent_decision(decision: AgentDecision) -> None:
         raise ValueError("edit_file_section tool requires old_text.")
       if tool_call.new_text is None:
         raise ValueError("edit_file_section tool requires new_text.")
+      return
+
+    if tool_call.tool_name == "create_file":
+      if not tool_call.path:
+        raise ValueError("create_file tool requires path.")
+      if tool_call.new_text is None:
+        raise ValueError("create_file tool requires new_text.")
       return
 
     raise ValueError(f"Unknown tool name: {tool_call.tool_name}")

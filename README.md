@@ -13,7 +13,7 @@ The separation is intentional. Hub messages are treated as untrusted input, so t
 
 - Structured model decisions with Pydantic schemas.
 - A custom Python agent loop with session history and logging.
-- Tool routing for `bash`, `read_file`, and `edit_file_section`.
+- Tool routing for `bash`, `read_file`, `edit_file_section`, and `create_file`.
 - Conservative bash, path, and file-editing safety checks.
 - Output limiting before tool results are sent back to the model.
 - Hub polling through the shared HTTP API.
@@ -133,10 +133,12 @@ The Python code still controls the loop, validation, tool routing, safety checks
 | `bash` | Runs conservative commands inside the project root |
 | `read_file` | Reads a safe project file |
 | `edit_file_section` | Replaces one exact text section in a safe project file |
+| `create_file` | Creates a new safe project file and refuses overwrites |
 
 The bash tool blocks destructive commands and shell features such as `rm`, `sudo`, `curl`, `wget`, `git`, `python`, pipes, redirection, command chaining, and command substitution.
 
 The file tools block paths outside the project root and sensitive or generated directories such as `.env`, `.git`, `.venv`, `logs`, and `__pycache__`.
+The `create_file` tool requires `path` and `new_text`, creates parent directories if needed, and refuses to overwrite existing files.
 
 ## Hub Configuration
 
