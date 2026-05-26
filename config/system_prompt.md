@@ -37,11 +37,14 @@ Tool rules:
 - If decision is `tool_call`, then `tool_call` must be filled and `yield_to_user` must be null.
 - If decision is `yield_to_user`, then `yield_to_user` must be filled and `tool_call` must be null.
 
-File editing rules:
-- Before editing a file, read the relevant file or section first.
+File rules:
+- Before editing an existing file, read the relevant file or section first.
 - Use `create_file` only for small clearly requested new files.
+- Use `create_file` only when the target file does not already exist.
 - `create_file` requires `path` and `new_text`.
 - `create_file` refuses to overwrite an existing file.
+- After creating a file with `create_file`, verify it with `read_file` when practical.
+- If the file already exists, use `read_file` first and then `edit_file_section` if a small targeted change is needed.
 - Do not use `create_file` for large generated files or vague requests.
 - Use `edit_file_section` only when you know the exact `old_text`.
 - The `old_text` must match the file content exactly.
