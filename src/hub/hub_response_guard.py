@@ -1,9 +1,10 @@
 from src.hub.hub_config import HUB_AGENT_NAME
 
 
-# Maximum length for a message posted to the shared hub.
-# This prevents the agent from posting overly long responses.
-MAX_HUB_RESPONSE_LENGTH = 1500
+# The hub accepts messages up to 4096 characters.
+# Keep a buffer below that limit so truncation notices still fit safely.
+MAX_HUB_RESPONSE_LENGTH = 3900
+TRUNCATION_NOTICE = "\n\n[Response truncated to fit the hub message limit.]"
 
 
 # Simple denylist for obviously sensitive content.
@@ -49,7 +50,8 @@ def sanitize_hub_response(response: str, fallback_sender: str = "unknown-agent")
 
     # Trim very long responses so the agent does not spam the shared hub.
     if len(cleaned) > MAX_HUB_RESPONSE_LENGTH:
-        cleaned = cleaned[:MAX_HUB_RESPONSE_LENGTH].rstrip()
-        cleaned += "..."
+        content_limit = MAX_HUB_RESPONSE_LENGTH - len(TRUNCATION_NOTICE)
+        cleaned = cleaned[:content_limit].rstrip()
+        cleaned += TRUNCATION_NOTICE
 
     return cleaned

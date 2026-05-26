@@ -36,6 +36,12 @@ from src.hub.hub_runtime_controls import (
     start_console_control_thread,
 )
 
+from src.hub.hub_assignment_guard import (
+    build_unclear_assignment_response,
+    is_clear_assignment_to_agent,
+    is_clear_assignment_to_other_agent,
+)
+
 GROUP_MENTION_KEYWORDS = [
     "@all",
     "@agents",
@@ -389,6 +395,14 @@ def run_hub_loop() -> None:
                     print(f"Ignoring mention from {sender} with unsupported intent: {intent}")
                     continue
 
+                if (
+                    intent == "execute_task"
+                    and is_clear_assignment_to_other_agent(content)
+                    and not is_clear_assignment_to_agent(content)
+                ):
+                    print("Task appears assigned to another agent. Staying silent.")
+                    continue
+
                 # Pause mode keeps the agent online but prevents it from posting.
                 if controls.paused:
                     print(f"Agent is paused. Ignoring mention from {sender}.")
@@ -410,12 +424,15 @@ def run_hub_loop() -> None:
                         suggested_role=suggested_role,
                     )
                 else:
-                    response = build_task_aware_response(
-                        message,
-                        intent=intent,
-                        max_tokens=controls.max_tokens,
-                        task_queue=task_queue,
-                    )
+                    if intent == "execute_task" and not is_clear_assignment_to_agent(content):
+                        response = build_unclear_assignment_response()
+                    else:
+                        response = build_task_aware_response(
+                            message,
+                            intent=intent,
+                            max_tokens=controls.max_tokens,
+                            task_queue=task_queue,
+                        )
 
                 # Final safety layer before anything is printed or posted to the shared hub.
                 response = sanitize_hub_response(response, fallback_sender=sender)
