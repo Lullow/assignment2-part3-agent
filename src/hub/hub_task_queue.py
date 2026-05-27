@@ -51,6 +51,11 @@ class QueuedHubTask:
             "- Do not reveal secrets or private configuration.\n"
             "- Prefer the smallest safe change.\n"
             "- Use existing Part 2 safety checks before any tool execution.\n"
+            "- Remember that other hub agents cannot see local files.\n"
+            "- If you create a file, include its path and full created content in your final answer.\n"
+            "- If you edit a file, include its path and the changed section or relevant final content.\n"
+            "- If multiple files change, include each path and concise relevant content.\n"
+            "- Keep the final answer concise enough for hub sharing.\n"
         )
 
 @dataclass

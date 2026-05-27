@@ -15,6 +15,8 @@ ASSIGNMENT_VERBS = [
     "add",
     "fix",
     "build",
+    "make",
+    "generate",
     "summarize",
     "analyze",
 ]
@@ -28,9 +30,6 @@ NON_ASSIGNMENT_PHRASES = [
     "if you are ready",
     "if you're ready",
     "om du är redo",
-    "kommer att",
-    "will create",
-    "will work on",
     "can help",
     "finns tillgänglig",
 ]
@@ -44,16 +43,59 @@ ASSIGNMENT_PREFIXES = [
     "kan du",
 ]
 
+COLLABORATION_ASSIGNMENT_PHRASES = [
+    "work together",
+    "collaborate",
+    "you are the only two agents",
+    "you are the only agents",
+    "split the work",
+    "share code in chat",
+    "do not duplicate work",
+    "distribute roles",
+    "agree who takes",
+    "first agree",
+]
+
 MENTION_PATTERN = re.compile(r"@[a-z0-9][a-z0-9_-]*")
+
+
+def is_agent_status_noise(content: str) -> bool:
+    """
+    Detect low-value status messages from other agents.
+
+    These messages often quote earlier requests or report internal state.
+    They should usually not trigger new task proposals.
+    """
+
+    if not content:
+        return False
+
+    text = content.lower().strip()
+
+    return (
+        text.startswith("taking on:")
+        or text.startswith("done:")
+        or text.startswith("status:")
+        or text.startswith("[auto-summary]")
+    )
 
 
 def _agent_mention() -> str:
     return f"@{HUB_AGENT_NAME.lower()}"
 
 
+def _mentions_this_agent(text: str) -> bool:
+    return _agent_mention() in text
+
+
 def _starts_with_assignment(text: str) -> bool:
     """
     Check whether text after a mention starts like a direct task assignment.
+
+    Examples that should match:
+    - create tmp/file.py ...
+    - please create tmp/file.py ...
+    - can you review calculator.py ...
     """
 
     normalized = text.strip(" \t\n\r,.:;-")
@@ -68,13 +110,38 @@ def _starts_with_assignment(text: str) -> bool:
     return False
 
 
+def is_collaboration_assignment_to_agent(content: str) -> bool:
+    """
+    Detect broad collaboration assignments involving this agent.
+
+    This is different from a direct local execution task. For example:
+    '@lullo-swe-agent @josef-agent work together to create greeting.py'
+
+    This should let the hub agent participate with a text collaboration response
+    instead of incorrectly treating the message as unclear chatter.
+    """
+
+    if not content:
+        return False
+
+    text = content.lower()
+
+    if not _mentions_this_agent(text):
+        return False
+
+    return any(phrase in text for phrase in COLLABORATION_ASSIGNMENT_PHRASES)
+
+
 def is_clear_assignment_to_agent(content: str) -> bool:
     """
-    Decide whether a direct mention is a clear task assignment to this agent.
+    Decide whether a direct mention is a clear assignment to this agent.
 
     Mentions alone are not enough. In group collaboration, agents often mention
-    each other in status updates, thanks, or planning messages. This guard helps
-    prevent queue spam by requiring a clear action verb near the agent mention.
+    each other in status updates, thanks, or planning messages.
+
+    This returns True for:
+    - direct local execution tasks
+    - broad collaboration assignments that explicitly involve this agent
     """
 
     if not content:
@@ -85,6 +152,11 @@ def is_clear_assignment_to_agent(content: str) -> bool:
 
     if mention not in text:
         return False
+
+    # Allow explicit collaboration tasks even when they are not phrased as
+    # '@agent create ...' directly.
+    if is_collaboration_assignment_to_agent(content):
+        return True
 
     # Avoid turning thanks/status chatter into queued execution tasks.
     if any(phrase in text for phrase in NON_ASSIGNMENT_PHRASES):
@@ -99,6 +171,8 @@ def is_clear_assignment_to_agent(content: str) -> bool:
 def is_clear_assignment_to_other_agent(content: str) -> bool:
     """
     Detect clear task assignments to another mentioned agent.
+
+    This helps the agent avoid answering for someone else.
     """
 
     if not content:
@@ -119,6 +193,22 @@ def is_clear_assignment_to_other_agent(content: str) -> bool:
             return True
 
     return False
+
+
+def is_unclear_assignment_to_agent(content: str) -> bool:
+    """
+    Detect mentions of this agent that are not clear assignments.
+
+    Useful when the hub loop wants to acknowledge availability without queueing
+    local execution.
+    """
+
+    if not content:
+        return False
+
+    text = content.lower()
+
+    return _mentions_this_agent(text) and not is_clear_assignment_to_agent(content)
 
 
 def build_unclear_assignment_response() -> str:

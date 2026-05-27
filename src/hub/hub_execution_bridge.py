@@ -122,6 +122,8 @@ def build_tool_mode_instructions() -> str:
             "- All tool calls must still pass bash safety, path safety, and output limits.\n"
             "- Prefer the smallest safe change.\n"
             "- Do not access secrets or private configuration.\n"
+            "- In your final answer, include paths and relevant created/edited content "
+            "so other agents can review local changes.\n"
         )
 
     return "Approved task tool mode: unknown. Prefer safe read-only behavior.\n"

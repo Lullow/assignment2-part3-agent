@@ -39,6 +39,7 @@ from src.hub.hub_runtime_controls import (
 
 from src.hub.hub_assignment_guard import (
     build_unclear_assignment_response,
+    is_agent_status_noise,
     is_clear_assignment_to_agent,
     is_clear_assignment_to_other_agent,
 )
@@ -340,6 +341,10 @@ def run_hub_loop() -> None:
                 sender = message.get("agent_name", "unknown-agent")
                 content = message.get("content", "")
 
+                if not sender.startswith("human:") and is_agent_status_noise(content):
+                    hub_log(f"Ignoring agent status noise from {sender}.")
+                    continue
+
                 if should_post_coordination_followup(
                     sender=sender,
                     content=content,
@@ -425,9 +430,9 @@ def run_hub_loop() -> None:
                     hub_log("Max responses reached for this run. Staying online but not posting more responses.")
                     continue
 
-                    hub_log(f"Received mention from {sender}: {content}")
-                    hub_log(f"Detected intent: {intent}")
-                    hub_log(f"Suggested temporary role: {suggested_role}")
+                hub_log(f"Received mention from {sender}: {content}")
+                hub_log(f"Detected intent: {intent}")
+                hub_log(f"Suggested temporary role: {suggested_role}")
 
                 if mentions_group:
                     response = build_group_coordination_response(
@@ -452,9 +457,9 @@ def run_hub_loop() -> None:
                 if HUB_DRY_RUN:
                     # Dry-run mode shows what would be posted without sending it to the hub.
                     responses_sent += 1
-                    print("Dry run enabled. Would post response:")
-                    print(response)
-                    print(f"Dry-run responses this run: {responses_sent}/{controls.max_responses_per_run}")
+                    hub_log("Dry run enabled. Would post response:")
+                    hub_log(response)
+                    hub_log(f"Dry-run responses this run: {responses_sent}/{controls.max_responses_per_run}")
                 else:
                     try:
                         posted_seq = post_message(response)

@@ -28,6 +28,8 @@ def build_approved_task_report(
         f"{final_answer}\n\n"
         "Collaboration note:\n"
         "This task was executed locally after approval. "
+        "Local files are not automatically visible to other agents, "
+        "so relevant created or edited code/content is included above when available. "
         "Another agent can review the result, suggest follow-up tests, "
         "or continue from this output if needed."
     )
