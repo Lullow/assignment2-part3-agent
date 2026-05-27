@@ -1,4 +1,5 @@
 import time
+from collections import deque
 
 from requests import RequestException
 
@@ -102,6 +103,9 @@ BROAD_COLLABORATION_CANDIDATE_TERMS = [
     "post your code",
 ]
 
+RECENT_CONTEXT_LIMIT = 10
+MAX_CONTEXT_MESSAGE_CHARS = 800
+
 
 def hub_log(message: str) -> None:
     """
@@ -132,12 +136,50 @@ def get_message_seq(message: dict) -> int | None:
     return None
 
 
+def format_recent_context(recent_context) -> str:
+    """
+    Format recent hub messages for semantic routing context.
+
+    This stays bounded and trimmed so classifier context remains small.
+    """
+
+    if not recent_context:
+        return "No recent context."
+
+    entries = []
+
+    for item in recent_context:
+        content = item["content"]
+
+        if len(content) > MAX_CONTEXT_MESSAGE_CHARS:
+            content = content[:MAX_CONTEXT_MESSAGE_CHARS].rstrip() + "..."
+
+        entries.append(
+            f"seq={item['seq']} sender={item['sender']}:\n"
+            f"{content}"
+        )
+
+    return "\n\n".join(entries)
+
+
 def is_human_sender(sender: str) -> bool:
     """
     Check whether a hub message came from a human sender.
+
+    The hub may represent humans in slightly different ways, for example:
+    - "human"
+    - "human:Lullo"
+    - "Lullo (human)"
     """
 
-    return sender == "human" or sender.startswith("human:")
+    normalized = sender.lower().strip()
+
+    return (
+        normalized == "human"
+        or normalized.startswith("human:")
+        or normalized.endswith("(human)")
+        or "(human)" in normalized
+    )
 
 
 def is_direct_mention_for_agent(content: str) -> bool:
@@ -180,6 +222,8 @@ def is_broad_collaboration_candidate(content: str) -> bool:
 def can_answer_identification_request(sender: str) -> bool:
     """
     Allow identification replies for humans, agents, or explicit coordinators.
+
+    Own messages are always ignored to prevent feedback loops.
     """
 
     normalized_sender = sender.lower().strip()
@@ -277,6 +321,14 @@ def build_classifier_task_claim_response(
         f"{HUB_AGENT_NAME} can take one small remaining task, preferably README/demo "
         "instructions, review, or tests. I will keep the contribution chat-only unless "
         "I receive a clear local task for approval."
+    )
+
+
+def build_classifier_already_claimed_response(claimed_task: str) -> str:
+    return (
+        "ACKNOWLEDGED\n\n"
+        f"{HUB_AGENT_NAME} already claimed: {claimed_task}. I will avoid duplicate "
+        "claims and wait for the relevant handoff or code/context before contributing further."
     )
 
 
@@ -525,6 +577,8 @@ def run_hub_loop() -> None:
     collaboration_stall_followups_sent = 0
     MAX_COLLABORATION_STALL_FOLLOWUPS = 1
     COLLABORATION_STALL_SECONDS = 45
+    recent_context = deque(maxlen=RECENT_CONTEXT_LIMIT)
+    claimed_task = None
 
     try:
         # Load existing messages once so the agent does not reply to old hub history.
@@ -574,9 +628,27 @@ def run_hub_loop() -> None:
                 sender = message.get("agent_name", "unknown-agent")
                 content = message.get("content", "")
 
-                if sender.lower().strip() == HUB_AGENT_NAME.lower():
+                normalized_sender = sender.lower().strip()
+                is_own_message = normalized_sender == HUB_AGENT_NAME.lower()
+
+                # Hard safety guard: never process our own hub messages.
+                # This must run before manager guards, status-noise checks,
+                # deterministic routing, classifier fallback, and response building.
+                if is_own_message:
                     hub_log("Ignoring own message.")
                     continue
+
+                # Store recent context from other senders only.
+                # This gives the semantic classifier current hub context without
+                # letting the agent respond to itself or build loops from its own replies.
+                if content:
+                    recent_context.append(
+                        {
+                            "seq": seq,
+                            "sender": sender,
+                            "content": content,
+                        }
+                    )
 
                 if is_human_sender(sender) and is_manager_assignment_to_other_agent(content):
                     hub_log("Another agent was assigned as manager/coordinator. Staying silent.")
@@ -660,11 +732,16 @@ def run_hub_loop() -> None:
 
                     # Deterministic guards handle hard safety. The classifier only makes
                     # a semantic routing suggestion; Python still controls all actions.
+                    known_context = (
+                        f"Current claimed task by {HUB_AGENT_NAME}: {claimed_task or 'none'}\n\n"
+                        f"Recent hub messages:\n{format_recent_context(recent_context)}"
+                    )
+
                     classifier_decision = classify_hub_message(
                         sender=sender,
                         content=content,
                         agent_name=HUB_AGENT_NAME,
-                        known_context="semantic fallback for broad hub collaboration message",
+                        known_context=known_context,
                     )
 
                     if not classifier_decision.should_respond:
@@ -722,10 +799,16 @@ def run_hub_loop() -> None:
                     elif classifier_decision.response_type == "acknowledge_workflow_role":
                         response = build_workflow_role_ack_response(content)
                     elif classifier_decision.response_type == "claim_task":
-                        response = build_classifier_task_claim_response(
-                            classifier_decision.task_to_claim,
-                            content,
-                        )
+                        if claimed_task:
+                            response = build_classifier_already_claimed_response(claimed_task)
+                        else:
+                            response = build_classifier_task_claim_response(
+                                classifier_decision.task_to_claim,
+                                content,
+                            )
+
+                            if classifier_decision.task_to_claim:
+                                claimed_task = classifier_decision.task_to_claim
                     elif classifier_decision.response_type in {
                         "answer_question",
                         "review",
