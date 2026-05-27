@@ -56,8 +56,11 @@ GROUP_MENTION_KEYWORDS = [
     "@alla-bottar",
     "alla bottar",
     "alla agenter",
+    "alla agents",
+    "all agent",
     "all agents",
     "all bots",
+    "everyone",
 ]
 
 def hub_log(message: str) -> None:
@@ -89,22 +92,26 @@ def get_message_seq(message: dict) -> int | None:
     return None
 
 
-def is_mention_for_agent(content: str) -> bool:
+def is_human_sender(sender: str) -> bool:
     """
-    Check if a message mentions this agent.
+    Check whether a hub message came from a human sender.
+    """
 
-    A message counts as a mention if it contains:
-    - @agent-name
-    - agent-name
+    return sender == "human" or sender.startswith("human:")
+
+
+def is_direct_mention_for_agent(content: str) -> bool:
+    """
+    Check if a message directly addresses this agent with @agent-name.
+
+    Direct mentions require @ so passive references like
+    "lullo-swe-agent can do README" do not trigger unnecessary replies.
     """
 
     normalized_content = content.lower()
     normalized_agent_name = HUB_AGENT_NAME.lower()
 
-    return (
-        f"@{normalized_agent_name}" in normalized_content
-        or normalized_agent_name in normalized_content
-    )
+    return f"@{normalized_agent_name}" in normalized_content
 
 
 def should_respond_to_message(message: dict) -> bool:
@@ -115,7 +122,7 @@ def should_respond_to_message(message: dict) -> bool:
     - ignore its own messages
     - ignore empty messages
     - respond to direct mentions
-    - optionally respond to group mentions when enabled
+    - optionally respond to human group mentions when enabled
     """
 
     sender = message.get("agent_name", "")
@@ -129,8 +136,15 @@ def should_respond_to_message(message: dict) -> bool:
     if not content:
         return False
 
-    mentions_this_agent = is_mention_for_agent(content)
-    mentions_group = HUB_ENABLE_GROUP_MENTIONS and is_group_mention(content)
+    # Passive references to this agent are ignored unless they use @agent-name.
+    mentions_this_agent = is_direct_mention_for_agent(content)
+
+    # Group mentions are limited to humans to avoid agent-to-agent broadcast loops.
+    mentions_group = (
+        HUB_ENABLE_GROUP_MENTIONS
+        and is_human_sender(sender)
+        and is_group_mention(content)
+    )
 
     return mentions_this_agent or mentions_group
 
