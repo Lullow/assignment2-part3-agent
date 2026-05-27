@@ -283,10 +283,46 @@ def build_collaboration_stall_response() -> str:
 
     return (
         "COLLABORATION CHECK\n\n"
-        "I am waiting for the implementation to be shared in chat. "
-        "To keep the task moving, the assigned implementation agent can post the code, "
-        "or ask me to take over a specific part. "
+        "The collaboration may be waiting for a clear handoff. "
+        "The assigned implementation agent should share code in chat. "
+        "If no code is shared, I can provide a small chat-only scaffold, "
+        "review checklist, or test plan. "
         "I will not create files locally unless I receive a specific local task."
+    )
+
+
+def build_active_chat_task_response(content: str, sender: str) -> str:
+    """
+    Build a concrete chat-only contribution during active collaboration.
+
+    This keeps role handoffs useful without queueing local execution.
+    """
+
+    text = content.lower()
+    contributions = []
+
+    if "cli" in text or "command" in text or "flow" in text:
+        contributions.append("define the CLI flow: inputs, commands, output format, and error cases")
+
+    if "test" in text or "testing" in text:
+        contributions.append("write a chat-only test plan with key cases and expected results")
+
+    if "review" in text:
+        contributions.append("review the shared code for correctness, safety, and duplicate work")
+
+    if not contributions:
+        contributions.append("provide a small chat-only plan, scaffold, or review checklist")
+
+    contribution_text = "; ".join(contributions)
+
+    return (
+        f"Accepted, {sender}. I can handle this as a chat-only role: {contribution_text}. "
+        "Expected handoff: please share the implementation code, public function names, "
+        "and any intended CLI entrypoint in chat.\n\n"
+        "Initial plan from my side:\n"
+        "- I will review the shared code for correctness and simple structure.\n"
+        "- I will suggest CLI steps or test cases once the implementation is posted.\n"
+        "- I will keep everything in chat and will not queue local execution unless I receive a specific local task."
     )
 
 
@@ -322,7 +358,7 @@ def run_hub_loop() -> None:
     last_collaboration_activity_at = time.monotonic()
     collaboration_stall_followups_sent = 0
     MAX_COLLABORATION_STALL_FOLLOWUPS = 1
-    COLLABORATION_STALL_SECONDS = 40
+    COLLABORATION_STALL_SECONDS = 45
 
     try:
         # Load existing messages once so the agent does not reply to old hub history.
@@ -488,11 +524,7 @@ def run_hub_loop() -> None:
                         and sender != HUB_AGENT_NAME
                         and intent == "execute_task"
                     ):
-                        response = build_response(
-                            message,
-                            intent=intent,
-                            max_tokens=controls.max_tokens,
-                        )
+                        response = build_active_chat_task_response(content, sender)
                     elif intent == "execute_task" and is_chat_collaboration_task(content):
                         response = build_chat_collaboration_response(content)
                         active_chat_collaboration = True
