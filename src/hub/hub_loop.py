@@ -6,6 +6,7 @@ from src.hub.hub_responder import build_llm_collaboration_response
 from src.hub.hub_response_guard import sanitize_hub_response
 from src.hub.hub_client import fetch_messages, post_message, get_stats
 from src.hub.hub_intent import detect_hub_intent, should_handle_intent
+from src.hub.hub_message_classifier import classify_hub_message
 from src.hub.hub_task_proposal import build_task_proposal
 from src.hub.hub_delegation import build_delegation_proposal
 from src.hub.hub_task_queue import HubTaskQueue
@@ -66,6 +67,42 @@ GROUP_MENTION_KEYWORDS = [
     "everyone",
 ]
 
+AGENT_IDENTIFICATION_REQUESTS = [
+    "agents, identify yourselves",
+    "agents identify yourselves",
+    "other agents, identify yourselves",
+    "other agents identify yourselves",
+    "agents, please identify yourselves",
+    "agents please identify yourselves",
+    "agents, introduce yourselves",
+    "agents introduce yourselves",
+    "agents: reply with your name",
+    "agents reply with your name",
+    "all agents: reply with your name",
+    "all agents reply with your name",
+    "all agents, identify yourselves",
+    "all agents identify yourselves",
+    "identify yourselves",
+    "introduce yourselves",
+    "reply with your name",
+]
+
+BROAD_COLLABORATION_CANDIDATE_TERMS = [
+    "agents",
+    "other agents",
+    "all agents",
+    "team",
+    "remaining tasks",
+    "workflow",
+    "role",
+    "review",
+    "tests",
+    "readme",
+    "cli",
+    "post your code",
+]
+
+
 def hub_log(message: str) -> None:
     """
     Print hub-loop logs only when quiet console mode is disabled.
@@ -117,6 +154,46 @@ def is_direct_mention_for_agent(content: str) -> bool:
     return f"@{normalized_agent_name}" in normalized_content
 
 
+def is_agent_identification_request(content: str) -> bool:
+    """
+    Detect narrow group requests for agents to identify themselves.
+    """
+
+    normalized = " ".join(content.lower().replace("\n", " ").split())
+
+    return any(request in normalized for request in AGENT_IDENTIFICATION_REQUESTS)
+
+
+def is_broad_collaboration_candidate(content: str) -> bool:
+    """
+    Broad gate for semantic classification fallback.
+
+    Deterministic guards still handle hard safety. The LLM classifier only sees
+    likely collaboration messages and cannot execute tools or approve local work.
+    """
+
+    normalized = content.lower()
+
+    return any(term in normalized for term in BROAD_COLLABORATION_CANDIDATE_TERMS)
+
+
+def can_answer_identification_request(sender: str) -> bool:
+    """
+    Allow identification replies for humans, agents, or explicit coordinators.
+    """
+
+    normalized_sender = sender.lower().strip()
+
+    if normalized_sender == HUB_AGENT_NAME.lower():
+        return False
+
+    return (
+        is_human_sender(sender)
+        or normalized_sender.endswith("-agent")
+        or "coordinator" in normalized_sender
+    )
+
+
 def should_respond_to_message(message: dict) -> bool:
     """
     Decide whether this agent should respond to a hub message.
@@ -149,7 +226,67 @@ def should_respond_to_message(message: dict) -> bool:
         and is_group_mention(content)
     )
 
-    return mentions_this_agent or mentions_group
+    identification_request = (
+        HUB_ENABLE_GROUP_MENTIONS
+        and can_answer_identification_request(sender)
+        and is_agent_identification_request(content)
+    )
+
+    return mentions_this_agent or mentions_group or identification_request
+
+
+def build_agent_identification_response(content: str = "") -> str:
+    """
+    Build a safe, text-only identity response for hub coordination.
+    """
+
+    normalized = content.lower()
+
+    if "reply with your name" in normalized or "remaining open tasks" in normalized:
+        return (
+            "IDENTIFIED\n\n"
+            f"{HUB_AGENT_NAME} is online. I can take the README/demo instructions task: "
+            "usage steps, examples, and a short run/demo section. I will keep the "
+            "contribution chat-only unless I receive a clear local task for approval."
+        )
+
+    return (
+        "IDENTIFIED\n\n"
+        f"{HUB_AGENT_NAME} is online. I can help with planning, review, testing, "
+        "README/demo instructions, or one small assigned task after local approval."
+    )
+
+
+def build_classifier_identify_response(content: str) -> str:
+    return build_agent_identification_response(content)
+
+
+def build_classifier_task_claim_response(
+    task_to_claim: str | None,
+    content: str,
+) -> str:
+    if task_to_claim:
+        return (
+            "TASK CLAIM\n\n"
+            f"{HUB_AGENT_NAME} can take: {task_to_claim}. I will keep the contribution "
+            "chat-only unless I receive a clear local task for approval."
+        )
+
+    return (
+        "TASK CLAIM\n\n"
+        f"{HUB_AGENT_NAME} can take one small remaining task, preferably README/demo "
+        "instructions, review, or tests. I will keep the contribution chat-only unless "
+        "I receive a clear local task for approval."
+    )
+
+
+def build_classifier_clarify_response() -> str:
+    return (
+        "CLARIFICATION NEEDED\n\n"
+        "I saw the message, but I need a clearer task or handoff before contributing. "
+        "Please assign me one small role such as planning, review, tests, README/demo, "
+        "or final refinement."
+    )
 
 
 def build_simple_response(message: dict) -> str:
@@ -499,8 +636,42 @@ def run_hub_loop() -> None:
 
                     continue
 
-                if not should_respond_to_message(message):
-                    continue
+                classifier_decision = None
+                deterministic_should_respond = should_respond_to_message(message)
+
+                if not deterministic_should_respond:
+                    if not (
+                        HUB_ENABLE_GROUP_MENTIONS
+                        and is_broad_collaboration_candidate(content)
+                    ):
+                        continue
+
+                    if controls.paused:
+                        hub_log(f"Agent is paused. Ignoring classifier candidate from {sender}.")
+                        continue
+
+                    if responses_sent >= controls.max_responses_per_run:
+                        hub_log("Max responses reached. Skipping classifier candidate.")
+                        continue
+
+                    # Deterministic guards handle hard safety. The classifier only makes
+                    # a semantic routing suggestion; Python still controls all actions.
+                    classifier_decision = classify_hub_message(
+                        sender=sender,
+                        content=content,
+                        agent_name=HUB_AGENT_NAME,
+                        known_context="semantic fallback for broad hub collaboration message",
+                    )
+
+                    if not classifier_decision.should_respond:
+                        continue
+
+                    if (
+                        classifier_decision.confidence < 0.55
+                        and not is_direct_mention_for_agent(content)
+                    ):
+                        hub_log("Classifier confidence too low. Staying silent.")
+                        continue
 
                 mentions_group = HUB_ENABLE_GROUP_MENTIONS and is_group_mention(content)
 
@@ -541,7 +712,41 @@ def run_hub_loop() -> None:
 
                 response = None
 
-                if is_workflow_role_assignment_to_agent(content):
+                if classifier_decision is not None:
+                    if classifier_decision.response_type == "identify":
+                        response = build_classifier_identify_response(content)
+                    elif classifier_decision.response_type == "acknowledge_workflow_role":
+                        response = build_workflow_role_ack_response(content)
+                    elif classifier_decision.response_type == "claim_task":
+                        response = build_classifier_task_claim_response(
+                            classifier_decision.task_to_claim,
+                            content,
+                        )
+                    elif classifier_decision.response_type in {
+                        "answer_question",
+                        "review",
+                        "plan",
+                    }:
+                        classifier_intent = {
+                            "answer_question": "question",
+                            "review": "review",
+                            "plan": "plan",
+                        }.get(classifier_decision.response_type, intent)
+
+                        response = build_response(
+                            message,
+                            intent=classifier_intent,
+                            max_tokens=controls.max_tokens,
+                        )
+                    elif classifier_decision.response_type == "clarify":
+                        response = build_classifier_clarify_response()
+                    else:
+                        continue
+
+                elif is_agent_identification_request(content):
+                    response = build_agent_identification_response(content)
+
+                elif is_workflow_role_assignment_to_agent(content):
                     response = build_workflow_role_ack_response(content)
 
                 # A direct @mention with unclear intent should get one safe clarification,
