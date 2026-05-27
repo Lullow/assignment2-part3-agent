@@ -1,7 +1,14 @@
 from dataclasses import dataclass
 import threading
-from src.hub.hub_task_queue import HubTaskQueue
+
+from requests import RequestException
+
+from src.hub.hub_client import post_message
+from src.hub.hub_config import HUB_POST_APPROVED_REPORTS
 from src.hub.hub_execution_bridge import run_approved_task
+from src.hub.hub_response_guard import sanitize_hub_response
+from src.hub.hub_task_queue import HubTaskQueue
+
 
 @dataclass
 class HubRuntimeControls:
@@ -150,7 +157,26 @@ def start_console_control_thread(
                 print(f"[control] Approved task #{task.task_id}.")
                 print()
                 print("[control] Task package for future SWE-agent bridge:")
-                print(run_approved_task(task))
+
+                try:
+                    report = run_approved_task(task)
+                except Exception as error:
+                    print(f"[control] Approved task failed: {error}")
+                    continue
+
+                print(report)
+
+                if HUB_POST_APPROVED_REPORTS:
+                    try:
+                        safe_report = sanitize_hub_response(
+                            report,
+                            fallback_sender="approved-task-report",
+                        )
+                        posted_seq = post_message(safe_report)
+                        print(f"[control] Posted approved task report to hub with seq: {posted_seq}")
+                    except RequestException as error:
+                        print(f"[control] Could not post approved task report to hub: {error}")
+
                 continue
 
             if command.startswith("/reject "):

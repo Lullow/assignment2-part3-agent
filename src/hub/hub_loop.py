@@ -38,8 +38,10 @@ from src.hub.hub_runtime_controls import (
 )
 
 from src.hub.hub_assignment_guard import (
+    build_chat_collaboration_response,
     build_unclear_assignment_response,
     is_agent_status_noise,
+    is_chat_collaboration_task,
     is_clear_assignment_to_agent,
     is_clear_assignment_to_other_agent,
 )
@@ -414,6 +416,7 @@ def run_hub_loop() -> None:
 
                 if (
                     intent == "execute_task"
+                    and not is_chat_collaboration_task(content)
                     and is_clear_assignment_to_other_agent(content)
                     and not is_clear_assignment_to_agent(content)
                 ):
@@ -441,7 +444,9 @@ def run_hub_loop() -> None:
                         suggested_role=suggested_role,
                     )
                 else:
-                    if intent == "execute_task" and not is_clear_assignment_to_agent(content):
+                    if intent == "execute_task" and is_chat_collaboration_task(content):
+                        response = build_chat_collaboration_response(content)
+                    elif intent == "execute_task" and not is_clear_assignment_to_agent(content):
                         response = build_unclear_assignment_response()
                     else:
                         response = build_task_aware_response(

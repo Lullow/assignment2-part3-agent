@@ -48,6 +48,10 @@ HUB_ENABLE_GROUP_MENTIONS = os.getenv("HUB_ENABLE_GROUP_MENTIONS", "false").stri
 # Reduce console output when running in quieter environments such as Docker or remote hosts.
 HUB_CONSOLE_QUIET = os.getenv("HUB_CONSOLE_QUIET", "false").strip().lower() == "true"
 
+HUB_POST_APPROVED_REPORTS = (
+    os.getenv("HUB_POST_APPROVED_REPORTS", "false").strip().lower() == "true"
+)
+
 def validate_hub_config() -> None:
     """
     Validate required hub configuration.

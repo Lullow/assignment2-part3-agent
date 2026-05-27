@@ -50,7 +50,12 @@ COLLABORATION_ASSIGNMENT_PHRASES = [
     "you are the only agents",
     "split the work",
     "share code in chat",
+    "decide between yourselves",
+    "decide who",
     "do not duplicate work",
+    "avoid duplicate work",
+    "collaboration rules",
+    "local files are not automatically visible",
     "distribute roles",
     "agree who takes",
     "first agree",
@@ -88,6 +93,10 @@ def _mentions_this_agent(text: str) -> bool:
     return _agent_mention() in text
 
 
+def _mentioned_agents(text: str) -> list[str]:
+    return MENTION_PATTERN.findall(text)
+
+
 def _starts_with_assignment(text: str) -> bool:
     """
     Check whether text after a mention starts like a direct task assignment.
@@ -110,15 +119,12 @@ def _starts_with_assignment(text: str) -> bool:
     return False
 
 
-def is_collaboration_assignment_to_agent(content: str) -> bool:
+def is_chat_collaboration_task(content: str) -> bool:
     """
-    Detect broad collaboration assignments involving this agent.
+    Detect multi-agent collaboration prompts that should stay text-only.
 
-    This is different from a direct local execution task. For example:
-    '@lullo-swe-agent @josef-agent work together to create greeting.py'
-
-    This should let the hub agent participate with a text collaboration response
-    instead of incorrectly treating the message as unclear chatter.
+    These messages can include implementation words like "build" or "create",
+    but they ask agents to coordinate in chat rather than run local execution.
     """
 
     if not content:
@@ -129,7 +135,33 @@ def is_collaboration_assignment_to_agent(content: str) -> bool:
     if not _mentions_this_agent(text):
         return False
 
-    return any(phrase in text for phrase in COLLABORATION_ASSIGNMENT_PHRASES)
+    has_collaboration_phrase = any(
+        phrase in text for phrase in COLLABORATION_ASSIGNMENT_PHRASES
+    )
+
+    return has_collaboration_phrase
+
+
+def is_collaboration_assignment_to_agent(content: str) -> bool:
+    """
+    Detect broad collaboration assignments involving this agent.
+
+    This is different from a direct local execution task. For example:
+    '@lullo-swe-agent @josef-agent work together to create greeting.py'
+
+    This should let the hub loop route the message to a text-only collaboration
+    response instead of local execution.
+    """
+
+    if not content:
+        return False
+
+    text = content.lower()
+
+    if not _mentions_this_agent(text):
+        return False
+
+    return is_chat_collaboration_task(content)
 
 
 def is_clear_assignment_to_agent(content: str) -> bool:
@@ -139,9 +171,8 @@ def is_clear_assignment_to_agent(content: str) -> bool:
     Mentions alone are not enough. In group collaboration, agents often mention
     each other in status updates, thanks, or planning messages.
 
-    This returns True for:
-    - direct local execution tasks
-    - broad collaboration assignments that explicitly involve this agent
+    This returns True for direct local execution tasks only.
+    Chat collaboration prompts are handled separately.
     """
 
     if not content:
@@ -153,10 +184,9 @@ def is_clear_assignment_to_agent(content: str) -> bool:
     if mention not in text:
         return False
 
-    # Allow explicit collaboration tasks even when they are not phrased as
-    # '@agent create ...' directly.
+    # Chat collaboration tasks are not clear local execution assignments.
     if is_collaboration_assignment_to_agent(content):
-        return True
+        return False
 
     # Avoid turning thanks/status chatter into queued execution tasks.
     if any(phrase in text for phrase in NON_ASSIGNMENT_PHRASES):
@@ -222,4 +252,30 @@ def build_unclear_assignment_response() -> str:
         "local execution.\n\n"
         "Please assign me a specific task like:\n"
         f"`@{HUB_AGENT_NAME} create test_calculator.py with tests for add, subtract, and multiply.`"
+    )
+
+
+def build_chat_collaboration_response(content: str) -> str:
+    """
+    Build a short text-only response for collaboration prompts.
+    """
+
+    text = content.lower()
+    other_agents = [
+        mention.lstrip("@")
+        for mention in _mentioned_agents(text)
+        if mention != _agent_mention()
+    ]
+
+    if other_agents:
+        other_agent_text = ", ".join(other_agents)
+        role_suggestion = f"{other_agent_text} can take implementation."
+    else:
+        role_suggestion = "Another agent can take implementation."
+
+    return (
+        "I can take review/demo instructions. "
+        f"{role_suggestion} "
+        "Please share proposed code in chat so I can review it and suggest run/test steps. "
+        "I will not create files locally or queue local execution unless I receive a specific local task."
     )
