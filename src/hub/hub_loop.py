@@ -373,6 +373,7 @@ def build_response(
     message: dict,
     intent: str | None = None,
     max_tokens: int | None = None,
+    known_context: str | None = None,
 ) -> str:
     """
     Build a response for a hub message.
@@ -391,6 +392,7 @@ def build_response(
                 message,
                 intent=intent,
                 max_tokens=max_tokens,
+                known_context=known_context,
             )
         except Exception as error:
             # Keep the hub loop alive even if the LLM provider fails.
@@ -428,6 +430,7 @@ def build_task_aware_response(
     intent: str,
     max_tokens: int | None = None,
     task_queue: HubTaskQueue | None = None,
+    known_context: str | None = None,
 ) -> str:
     """
     Build a response based on the detected hub intent.
@@ -468,6 +471,7 @@ def build_task_aware_response(
         message,
         intent=intent,
         max_tokens=max_tokens,
+        known_context=known_context,
     )
 
 
@@ -714,6 +718,10 @@ def run_hub_loop() -> None:
 
                 classifier_decision = None
                 deterministic_should_respond = should_respond_to_message(message)
+                known_context = (
+                    f"Current claimed task by {HUB_AGENT_NAME}: {claimed_task or 'none'}\n\n"
+                    f"Recent hub messages:\n{format_recent_context(recent_context)}"
+                )
 
                 if not deterministic_should_respond:
                     if not (
@@ -732,11 +740,6 @@ def run_hub_loop() -> None:
 
                     # Deterministic guards handle hard safety. The classifier only makes
                     # a semantic routing suggestion; Python still controls all actions.
-                    known_context = (
-                        f"Current claimed task by {HUB_AGENT_NAME}: {claimed_task or 'none'}\n\n"
-                        f"Recent hub messages:\n{format_recent_context(recent_context)}"
-                    )
-
                     classifier_decision = classify_hub_message(
                         sender=sender,
                         content=content,
@@ -824,6 +827,7 @@ def run_hub_loop() -> None:
                             message,
                             intent=classifier_intent,
                             max_tokens=controls.max_tokens,
+                            known_context=known_context,
                         )
                     elif classifier_decision.response_type == "clarify":
                         response = build_classifier_clarify_response()
@@ -873,6 +877,7 @@ def run_hub_loop() -> None:
                                 intent=intent,
                                 max_tokens=controls.max_tokens,
                                 task_queue=task_queue,
+                                known_context=known_context,
                             )
 
                 # Final safety layer before anything is printed or posted to the shared hub.
