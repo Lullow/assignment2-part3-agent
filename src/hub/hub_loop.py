@@ -266,6 +266,14 @@ def is_group_mention(content: str) -> bool:
     return any(keyword in normalized for keyword in GROUP_MENTION_KEYWORDS)
 
 
+def contains_code_block(content: str) -> bool:
+    """
+    Detect whether a hub message contains shared code.
+    """
+
+    return "```" in content
+
+
 def build_collaboration_stall_response() -> str:
     """
     Build a bounded follow-up for stalled chat collaboration.
@@ -313,8 +321,8 @@ def run_hub_loop() -> None:
     active_chat_collaboration = False
     last_collaboration_activity_at = time.monotonic()
     collaboration_stall_followups_sent = 0
-    MAX_COLLABORATION_STALL_FOLLOWUPS = 2
-    COLLABORATION_STALL_SECONDS = 20
+    MAX_COLLABORATION_STALL_FOLLOWUPS = 1
+    COLLABORATION_STALL_SECONDS = 40
 
     try:
         # Load existing messages once so the agent does not reply to old hub history.
@@ -368,8 +376,14 @@ def run_hub_loop() -> None:
                     hub_log(f"Ignoring agent status noise from {sender}.")
                     continue
 
+                was_active_chat_collaboration = active_chat_collaboration
+
                 if active_chat_collaboration and sender != HUB_AGENT_NAME and content:
                     last_collaboration_activity_at = time.monotonic()
+
+                    if not sender.startswith("human:") and contains_code_block(content):
+                        active_chat_collaboration = False
+                        hub_log("Code block shared during chat collaboration. Stopping stall watchdog.")
 
                 if should_post_coordination_followup(
                     sender=sender,
@@ -468,7 +482,18 @@ def run_hub_loop() -> None:
                         suggested_role=suggested_role,
                     )
                 else:
-                    if intent == "execute_task" and is_chat_collaboration_task(content):
+                    if (
+                        was_active_chat_collaboration
+                        and not sender.startswith("human:")
+                        and sender != HUB_AGENT_NAME
+                        and intent == "execute_task"
+                    ):
+                        response = build_response(
+                            message,
+                            intent=intent,
+                            max_tokens=controls.max_tokens,
+                        )
+                    elif intent == "execute_task" and is_chat_collaboration_task(content):
                         response = build_chat_collaboration_response(content)
                         active_chat_collaboration = True
                         last_collaboration_activity_at = time.monotonic()
