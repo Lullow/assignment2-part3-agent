@@ -28,6 +28,7 @@ from src.hub.hub_config import (
     HUB_APPROVED_TASK_RUNNER,
     HUB_APPROVED_TASK_TOOL_MODE,
     HUB_ENABLE_GROUP_MENTIONS,
+    HUB_CONSOLE_QUIET,
     validate_hub_config,
 )
 
@@ -55,6 +56,16 @@ GROUP_MENTION_KEYWORDS = [
     "all agents",
     "all bots",
 ]
+
+def hub_log(message: str) -> None:
+    """
+    Print hub-loop logs only when quiet console mode is disabled.
+
+    This keeps the local control console usable during busy multi-agent tests.
+    """
+    if not HUB_CONSOLE_QUIET:
+        print(message)
+
 
 def get_message_seq(message: dict) -> int | None:
     """
@@ -338,11 +349,11 @@ def run_hub_loop() -> None:
                         continue
 
                     if controls.paused:
-                        print(f"Agent is paused. Ignoring coordination follow-up from {sender}.")
+                        hub_log(f"Agent is paused. Ignoring coordination follow-up from {sender}.")
                         continue
 
                     if responses_sent >= controls.max_responses_per_run:
-                        print("Max responses reached. Skipping coordination follow-up.")
+                        hub_log("Max responses reached. Skipping coordination follow-up.")
                         continue
 
                     response = build_coordination_followup_response(
@@ -355,9 +366,9 @@ def run_hub_loop() -> None:
                     if HUB_DRY_RUN:
                         responses_sent += 1
                         coordination_followups_sent += 1
-                        print("Dry run enabled. Would post coordination follow-up:")
-                        print(response)
-                        print(f"Dry-run responses this run: {responses_sent}/{controls.max_responses_per_run}")
+                        hub_log("Dry run enabled. Would post coordination follow-up:")
+                        hub_log(response)
+                        hub_log(f"Dry-run responses this run: {responses_sent}/{controls.max_responses_per_run}")
                     else:
                         try:
                             posted_seq = post_message(response)
@@ -368,8 +379,8 @@ def run_hub_loop() -> None:
 
                         responses_sent += 1
                         coordination_followups_sent += 1
-                        print(f"Posted coordination follow-up with seq: {posted_seq}")
-                        print(f"Responses sent this run: {responses_sent}/{controls.max_responses_per_run}")
+                        hub_log(f"Posted coordination follow-up with seq: {posted_seq}")
+                        hub_log(f"Responses sent this run: {responses_sent}/{controls.max_responses_per_run}")
                         time.sleep(HUB_POLL_INTERVAL_SECONDS)
 
                     continue
@@ -393,7 +404,7 @@ def run_hub_loop() -> None:
 
                 # Ignore mentions that do not match supported collaboration intents.
                 if not should_handle_intent(intent):
-                    print(f"Ignoring mention from {sender} with unsupported intent: {intent}")
+                    hub_log(f"Ignoring mention from {sender} with unsupported intent: {intent}")
                     continue
 
                 if (
@@ -401,22 +412,22 @@ def run_hub_loop() -> None:
                     and is_clear_assignment_to_other_agent(content)
                     and not is_clear_assignment_to_agent(content)
                 ):
-                    print("Task appears assigned to another agent. Staying silent.")
+                    hub_log("Task appears assigned to another agent. Staying silent.")
                     continue
 
                 # Pause mode keeps the agent online but prevents it from posting.
                 if controls.paused:
-                    print(f"Agent is paused. Ignoring mention from {sender}.")
+                    hub_log(f"Agent is paused. Ignoring mention from {sender}.")
                     continue
 
                 # Safety cap to avoid spamming the hub or using too many LLM calls.
                 if responses_sent >= controls.max_responses_per_run:
-                    print("Max responses reached for this run. Staying online but not posting more responses.")
+                    hub_log("Max responses reached for this run. Staying online but not posting more responses.")
                     continue
 
-                print(f"Received mention from {sender}: {content}")
-                print(f"Detected intent: {intent}")
-                print(f"Suggested temporary role: {suggested_role}")
+                    hub_log(f"Received mention from {sender}: {content}")
+                    hub_log(f"Detected intent: {intent}")
+                    hub_log(f"Suggested temporary role: {suggested_role}")
 
                 if mentions_group:
                     response = build_group_coordination_response(
@@ -454,8 +465,8 @@ def run_hub_loop() -> None:
 
                     responses_sent += 1
 
-                    print(f"Posted response with seq: {posted_seq}")
-                    print(f"Responses sent this run: {responses_sent}/{controls.max_responses_per_run}")
+                    hub_log(f"Posted response with seq: {posted_seq}")
+                    hub_log(f"Responses sent this run: {responses_sent}/{controls.max_responses_per_run}")
 
                     # Extra sleep after posting because POST is also a request.
                     time.sleep(HUB_POLL_INTERVAL_SECONDS)

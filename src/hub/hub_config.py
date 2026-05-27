@@ -38,10 +38,15 @@ HUB_USE_LLM_RESPONDER = os.getenv("HUB_USE_LLM_RESPONDER", "false").strip().lowe
 # Token cap for hub responses to avoid overly long replies and unnecessary cost.
 HUB_RESPONDER_MAX_TOKENS = int(os.getenv("HUB_RESPONDER_MAX_TOKENS", "200"))
 
+# Safety mode for approved local tasks.
+# read_only should be the default; stronger tool modes should require explicit config.
 HUB_APPROVED_TASK_TOOL_MODE = os.getenv("HUB_APPROVED_TASK_TOOL_MODE", "read_only").strip().lower()
 
+# Allow the agent to respond to broad group mentions when coordination is useful.
 HUB_ENABLE_GROUP_MENTIONS = os.getenv("HUB_ENABLE_GROUP_MENTIONS", "false").strip().lower() == "true"
 
+# Reduce console output when running in quieter environments such as Docker or remote hosts.
+HUB_CONSOLE_QUIET = os.getenv("HUB_CONSOLE_QUIET", "false").strip().lower() == "true"
 
 def validate_hub_config() -> None:
     """
