@@ -574,6 +574,10 @@ def run_hub_loop() -> None:
                 sender = message.get("agent_name", "unknown-agent")
                 content = message.get("content", "")
 
+                if sender.lower().strip() == HUB_AGENT_NAME.lower():
+                    hub_log("Ignoring own message.")
+                    continue
+
                 if is_human_sender(sender) and is_manager_assignment_to_other_agent(content):
                     hub_log("Another agent was assigned as manager/coordinator. Staying silent.")
                     continue
