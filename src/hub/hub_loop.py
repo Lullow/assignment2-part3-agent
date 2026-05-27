@@ -166,6 +166,18 @@ def build_simple_response(message: dict) -> str:
     )
 
 
+def build_unclear_collaboration_request_response() -> str:
+    """
+    Build a short clarification response for unsupported direct mentions.
+    """
+
+    return (
+        "ACKNOWLEDGED\n\n"
+        "I saw the mention, but I need a clearer collaboration task. "
+        "Please ask me to plan, review, test, suggest code, or take one small assigned role."
+    )
+
+
 def build_response(
     message: dict,
     intent: str | None = None,
@@ -502,11 +514,6 @@ def run_hub_loop() -> None:
                     is_group_context=mentions_group,
                 )
 
-                # Ignore mentions that do not match supported collaboration intents.
-                if not should_handle_intent(intent):
-                    hub_log(f"Ignoring mention from {sender} with unsupported intent: {intent}")
-                    continue
-
                 if (
                     intent == "execute_task"
                     and not is_chat_collaboration_task(content)
@@ -530,34 +537,46 @@ def run_hub_loop() -> None:
                 hub_log(f"Detected intent: {intent}")
                 hub_log(f"Suggested temporary role: {suggested_role}")
 
-                if mentions_group:
-                    response = build_group_coordination_response(
-                        message,
-                        intent,
-                        suggested_role=suggested_role,
-                    )
-                else:
-                    if (
-                        was_active_chat_collaboration
-                        and not sender.startswith("human:")
-                        and sender != HUB_AGENT_NAME
-                        and intent == "execute_task"
-                    ):
-                        response = build_active_chat_task_response(content, sender)
-                    elif intent == "execute_task" and is_chat_collaboration_task(content):
-                        response = build_chat_collaboration_response(content)
-                        active_chat_collaboration = True
-                        last_collaboration_activity_at = time.monotonic()
-                        collaboration_stall_followups_sent = 0
-                    elif intent == "execute_task" and not is_clear_assignment_to_agent(content):
-                        response = build_unclear_assignment_response()
+                response = None
+
+                # A direct @mention with unclear intent should get one safe clarification,
+                # not silence and not local execution.
+                if not should_handle_intent(intent):
+                    if is_direct_mention_for_agent(content):
+                        response = build_unclear_collaboration_request_response()
                     else:
-                        response = build_task_aware_response(
+                        hub_log(f"Ignoring mention from {sender} with unsupported intent: {intent}")
+                        continue
+
+                if response is None:
+                    if mentions_group:
+                        response = build_group_coordination_response(
                             message,
-                            intent=intent,
-                            max_tokens=controls.max_tokens,
-                            task_queue=task_queue,
+                            intent,
+                            suggested_role=suggested_role,
                         )
+                    else:
+                        if (
+                            was_active_chat_collaboration
+                            and not sender.startswith("human:")
+                            and sender != HUB_AGENT_NAME
+                            and intent == "execute_task"
+                        ):
+                            response = build_active_chat_task_response(content, sender)
+                        elif intent == "execute_task" and is_chat_collaboration_task(content):
+                            response = build_chat_collaboration_response(content)
+                            active_chat_collaboration = True
+                            last_collaboration_activity_at = time.monotonic()
+                            collaboration_stall_followups_sent = 0
+                        elif intent == "execute_task" and not is_clear_assignment_to_agent(content):
+                            response = build_unclear_assignment_response()
+                        else:
+                            response = build_task_aware_response(
+                                message,
+                                intent=intent,
+                                max_tokens=controls.max_tokens,
+                                task_queue=task_queue,
+                            )
 
                 # Final safety layer before anything is printed or posted to the shared hub.
                 response = sanitize_hub_response(response, fallback_sender=sender)

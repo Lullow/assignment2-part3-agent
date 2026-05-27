@@ -40,7 +40,17 @@ ASSIGNMENT_PREFIXES = [
     "can you",
     "could you",
     "would you",
+    "you can",
+    "you should",
+    "should",
+    "will",
+    "take",
+    "please take",
+    "your task is to",
     "kan du",
+    "du kan",
+    "ta",
+    "kan ta",
 ]
 
 COLLABORATION_ASSIGNMENT_PHRASES = [

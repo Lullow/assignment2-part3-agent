@@ -32,9 +32,6 @@ EXECUTE_TASK_KEYWORDS = [
     "do this",
     "inspect",
     "inspect your repo",
-    "analyze",
-    "analyse",
-    "investigate",
     "check your repo",
     "utför",
     "bygg",
@@ -43,8 +40,6 @@ EXECUTE_TASK_KEYWORDS = [
     "fixa",
     "ändra",
     "uppdatera",
-    "analysera",
-    "undersök",
     "kolla ditt repo",
 ]
 
@@ -84,7 +79,12 @@ REVIEW_KEYWORDS = [
     "check this",
     "feedback",
     "look over",
+    "analyze",
+    "analyse",
+    "investigate",
     "granska",
+    "analysera",
+    "undersök",
     "kolla igenom",
 ]
 
