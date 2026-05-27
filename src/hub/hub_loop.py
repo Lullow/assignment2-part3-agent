@@ -40,11 +40,13 @@ from src.hub.hub_runtime_controls import (
 from src.hub.hub_assignment_guard import (
     build_chat_collaboration_response,
     build_unclear_assignment_response,
+    build_workflow_role_ack_response,
     is_agent_status_noise,
     is_chat_collaboration_task,
     is_clear_assignment_to_agent,
     is_clear_assignment_to_other_agent,
     is_manager_assignment_to_other_agent,
+    is_workflow_role_assignment_to_agent,
 )
 
 GROUP_MENTION_KEYWORDS = [
@@ -539,9 +541,12 @@ def run_hub_loop() -> None:
 
                 response = None
 
+                if is_workflow_role_assignment_to_agent(content):
+                    response = build_workflow_role_ack_response(content)
+
                 # A direct @mention with unclear intent should get one safe clarification,
                 # not silence and not local execution.
-                if not should_handle_intent(intent):
+                elif not should_handle_intent(intent):
                     if is_direct_mention_for_agent(content):
                         response = build_unclear_collaboration_request_response()
                     else:

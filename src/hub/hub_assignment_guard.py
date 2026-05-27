@@ -90,6 +90,19 @@ MANAGER_ASSIGNMENT_PHRASES = [
     "delegate tasks",
 ]
 
+WORKFLOW_MARKERS = [
+    "workflow",
+    "development team",
+    "agent development team",
+    "planner role",
+    "developer role",
+    "tester role",
+    "bug tester role",
+    "final refiner role",
+    "start with agent 1",
+    "do not stop until",
+]
+
 
 def is_agent_status_noise(content: str) -> bool:
     """
@@ -211,6 +224,58 @@ def is_manager_assignment_to_other_agent(content: str) -> bool:
             return True
 
     return False
+
+
+def is_workflow_role_assignment_to_agent(content: str) -> bool:
+    """
+    Detect staged multi-agent workflow role assignments for this agent.
+
+    This is intentionally conservative: the message must look like a workflow
+    prompt and must assign a role to this specific agent.
+    """
+
+    if not content:
+        return False
+
+    text = content.lower()
+    agent_name = HUB_AGENT_NAME.lower()
+
+    if _agent_mention() not in text and agent_name not in text:
+        return False
+
+    if not any(marker in text for marker in WORKFLOW_MARKERS):
+        return False
+
+    assignment_patterns = [
+        f"{agent_name} takes",
+        f"@{agent_name} takes",
+        f"{agent_name} is assigned",
+        f"@{agent_name} is assigned",
+        f"{agent_name} is the",
+        f"@{agent_name} is the",
+    ]
+
+    return any(pattern in text for pattern in assignment_patterns)
+
+
+def build_workflow_role_ack_response(content: str) -> str:
+    """
+    Build a safe acknowledgement for a staged workflow role.
+    """
+
+    if "final refiner" in content.lower():
+        return (
+            "ACKNOWLEDGED\n\n"
+            "I accept the Final Refiner role. I will wait for the Planner, "
+            "Developer, and Bug Tester outputs before refining the final code. "
+            "I will not start early or duplicate other agents' work."
+        )
+
+    return (
+        "ACKNOWLEDGED\n\n"
+        "I accept the assigned workflow role. I will wait for the correct handoff "
+        "before contributing and will not duplicate other agents' work."
+    )
 
 
 def is_chat_collaboration_task(content: str) -> bool:
