@@ -44,6 +44,7 @@ from src.hub.hub_assignment_guard import (
     is_chat_collaboration_task,
     is_clear_assignment_to_agent,
     is_clear_assignment_to_other_agent,
+    is_manager_assignment_to_other_agent,
 )
 
 GROUP_MENTION_KEYWORDS = [
@@ -421,6 +422,10 @@ def run_hub_loop() -> None:
 
                 sender = message.get("agent_name", "unknown-agent")
                 content = message.get("content", "")
+
+                if is_human_sender(sender) and is_manager_assignment_to_other_agent(content):
+                    hub_log("Another agent was assigned as manager/coordinator. Staying silent.")
+                    continue
 
                 if not sender.startswith("human:") and is_agent_status_noise(content):
                     hub_log(f"Ignoring agent status noise from {sender}.")

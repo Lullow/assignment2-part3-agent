@@ -62,6 +62,23 @@ COLLABORATION_ASSIGNMENT_PHRASES = [
 ]
 
 MENTION_PATTERN = re.compile(r"@[a-z0-9][a-z0-9_-]*")
+ADDRESSED_AGENT_PATTERN = re.compile(r"^@?([a-z0-9][a-z0-9_-]*-agent)\b")
+PLAIN_AGENT_PATTERN = re.compile(r"\b[a-z0-9][a-z0-9_-]*-agent\b")
+
+MANAGER_ASSIGNMENT_PHRASES = [
+    "you are the manager",
+    "you are manager",
+    "you are the coordinator",
+    "you are coordinator",
+    "you are the lead",
+    "you are lead",
+    "you are responsible",
+    "manager/coordinator",
+    "please coordinate",
+    "coordinate this task",
+    "coordinate the task",
+    "delegate tasks",
+]
 
 
 def is_agent_status_noise(content: str) -> bool:
@@ -115,6 +132,73 @@ def _starts_with_assignment(text: str) -> bool:
 
             if normalized == phrase or normalized.startswith(f"{phrase} "):
                 return True
+
+    return False
+
+
+def is_manager_assignment_to_other_agent(content: str) -> bool:
+    """
+    Detect when a human appoints another named agent as manager/coordinator.
+
+    This intentionally handles both:
+    - "emil-flyghed-agent, you are the manager..."
+    - "For this task, emil-flyghed-agent is the coordinator..."
+
+    It only returns True when another agent is clearly assigned a leadership role.
+    """
+
+    if not content:
+        return False
+
+    text = content.lower().strip()
+    this_agent = HUB_AGENT_NAME.lower()
+
+    addressed_match = ADDRESSED_AGENT_PATTERN.match(text)
+
+    candidate_agents = []
+
+    if addressed_match:
+        candidate_agents.append(addressed_match.group(1))
+
+    for match in PLAIN_AGENT_PATTERN.finditer(text):
+        candidate_agents.append(match.group())
+
+    # De-duplicate while preserving order.
+    seen = set()
+    unique_agents = []
+    for agent in candidate_agents:
+        if agent not in seen:
+            seen.add(agent)
+            unique_agents.append(agent)
+
+    for agent in unique_agents:
+        if agent == this_agent:
+            continue
+
+        explicit_patterns = [
+            f"{agent}, you are the manager",
+            f"{agent}, you are manager",
+            f"{agent}, you are the coordinator",
+            f"{agent}, you are coordinator",
+            f"{agent}, you are the lead",
+            f"{agent}, you are lead",
+            f"{agent} is the manager",
+            f"{agent} is manager",
+            f"{agent} is the coordinator",
+            f"{agent} is coordinator",
+            f"{agent} is the lead",
+            f"{agent} is lead",
+            f"{agent} should coordinate",
+            f"{agent} will coordinate",
+            f"{agent} please coordinate",
+            f"i want {agent} to coordinate",
+            f"let {agent} coordinate",
+            f"{agent} is responsible",
+            f"{agent} should be responsible",
+        ]
+
+        if any(pattern in text for pattern in explicit_patterns):
+            return True
 
     return False
 
