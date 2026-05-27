@@ -266,6 +266,22 @@ def is_group_mention(content: str) -> bool:
     return any(keyword in normalized for keyword in GROUP_MENTION_KEYWORDS)
 
 
+def build_collaboration_stall_response() -> str:
+    """
+    Build a bounded follow-up for stalled chat collaboration.
+
+    This does not claim ownership or queue local execution.
+    """
+
+    return (
+        "COLLABORATION CHECK\n\n"
+        "I am waiting for the implementation to be shared in chat. "
+        "To keep the task moving, the assigned implementation agent can post the code, "
+        "or ask me to take over a specific part. "
+        "I will not create files locally unless I receive a specific local task."
+    )
+
+
 def run_hub_loop() -> None:
     """
     Run the hub polling loop.
@@ -294,6 +310,11 @@ def run_hub_loop() -> None:
     active_group_task = False
     coordination_followups_sent = 0
     MAX_COORDINATION_FOLLOWUPS_PER_RUN = 3
+    active_chat_collaboration = False
+    last_collaboration_activity_at = time.monotonic()
+    collaboration_stall_followups_sent = 0
+    MAX_COLLABORATION_STALL_FOLLOWUPS = 2
+    COLLABORATION_STALL_SECONDS = 20
 
     try:
         # Load existing messages once so the agent does not reply to old hub history.
@@ -346,6 +367,9 @@ def run_hub_loop() -> None:
                 if not sender.startswith("human:") and is_agent_status_noise(content):
                     hub_log(f"Ignoring agent status noise from {sender}.")
                     continue
+
+                if active_chat_collaboration and sender != HUB_AGENT_NAME and content:
+                    last_collaboration_activity_at = time.monotonic()
 
                 if should_post_coordination_followup(
                     sender=sender,
@@ -446,6 +470,9 @@ def run_hub_loop() -> None:
                 else:
                     if intent == "execute_task" and is_chat_collaboration_task(content):
                         response = build_chat_collaboration_response(content)
+                        active_chat_collaboration = True
+                        last_collaboration_activity_at = time.monotonic()
+                        collaboration_stall_followups_sent = 0
                     elif intent == "execute_task" and not is_clear_assignment_to_agent(content):
                         response = build_unclear_assignment_response()
                     else:
@@ -479,6 +506,38 @@ def run_hub_loop() -> None:
                     hub_log(f"Responses sent this run: {responses_sent}/{controls.max_responses_per_run}")
 
                     # Extra sleep after posting because POST is also a request.
+                    time.sleep(HUB_POLL_INTERVAL_SECONDS)
+
+            if (
+                active_chat_collaboration
+                and not controls.paused
+                and responses_sent < controls.max_responses_per_run
+                and collaboration_stall_followups_sent < MAX_COLLABORATION_STALL_FOLLOWUPS
+                and time.monotonic() - last_collaboration_activity_at >= COLLABORATION_STALL_SECONDS
+            ):
+                response = build_collaboration_stall_response()
+                response = sanitize_hub_response(response, fallback_sender="collaboration-stall")
+
+                if HUB_DRY_RUN:
+                    responses_sent += 1
+                    collaboration_stall_followups_sent += 1
+                    last_collaboration_activity_at = time.monotonic()
+                    hub_log("Dry run enabled. Would post collaboration check:")
+                    hub_log(response)
+                    hub_log(f"Dry-run responses this run: {responses_sent}/{controls.max_responses_per_run}")
+                else:
+                    try:
+                        posted_seq = post_message(response)
+                    except RequestException as error:
+                        print(f"Could not post collaboration check: {error}")
+                        time.sleep(HUB_POLL_INTERVAL_SECONDS)
+                        continue
+
+                    responses_sent += 1
+                    collaboration_stall_followups_sent += 1
+                    last_collaboration_activity_at = time.monotonic()
+                    hub_log(f"Posted collaboration check with seq: {posted_seq}")
+                    hub_log(f"Responses sent this run: {responses_sent}/{controls.max_responses_per_run}")
                     time.sleep(HUB_POLL_INTERVAL_SECONDS)
 
             # Sleep after every successful polling cycle.
