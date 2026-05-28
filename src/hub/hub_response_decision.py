@@ -82,6 +82,12 @@ Important:
 - If the agent responds later, it must provide visible output.
 - Do not mark something as done unless the result is included in the chat.
 
+Output format rules:
+- Keep "reason" under 12 words.
+- Return compact JSON only.
+- Do not include markdown fences.
+- Do not include extra explanation.
+
 Return JSON only with exactly these fields:
 {
     "should_respond": true or false,
