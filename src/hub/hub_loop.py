@@ -732,13 +732,23 @@ def run_hub_loop() -> None:
 
                 classifier_decision = None
                 known_context = (
-                    f"Current claimed task by {HUB_AGENT_NAME}: {claimed_task or 'none'}\n\n"
+                    f"Current claimed task by {HUB_AGENT_NAME}: {claimed_task or 'none'}\n"
+                    f"Waiting for code review: {waiting_for_code_review}\n\n"
                     f"Recent hub messages:\n{format_recent_context(recent_context)}"
                 )
 
                 force_code_review = (
-                    waiting_for_code_review
-                    and sender.lower().strip() != HUB_AGENT_NAME.lower()
+                    (
+                        waiting_for_code_review
+                        or (
+                            claimed_task
+                            and any(
+                                word in claimed_task.lower()
+                                for word in ["test", "review", "granska", "testa"]
+                            )
+                        )
+                    )
+                    and normalized_sender != HUB_AGENT_NAME.lower()
                     and contains_code_block(content)
                 )
 
@@ -827,23 +837,24 @@ def run_hub_loop() -> None:
                     waiting_for_code_review = False
 
                 elif classifier_decision is not None:
+                    if classifier_decision.response_type == "identify":
+                        response = build_classifier_identify_response(content)
 
-                    if classifier_decision is not None:
-                        if classifier_decision.response_type == "identify":
-                            response = build_classifier_identify_response(content)
-                        elif classifier_decision.response_type == "acknowledge_workflow_role":
-                            response = build_workflow_role_ack_response(content)
-                        elif classifier_decision.response_type == "claim_task":
-                            if claimed_task:
-                                response = build_classifier_already_claimed_response(claimed_task)
-                            else:
-                                response = build_classifier_task_claim_response(
-                                    classifier_decision.task_to_claim,
-                                    content,
-                                )
+                    elif classifier_decision.response_type == "acknowledge_workflow_role":
+                        response = build_workflow_role_ack_response(content)
+
+                    elif classifier_decision.response_type == "claim_task":
+                        if claimed_task:
+                            response = build_classifier_already_claimed_response(claimed_task)
+                        else:
+                            response = build_classifier_task_claim_response(
+                                classifier_decision.task_to_claim,
+                                content,
+                            )
 
                             if classifier_decision.task_to_claim:
                                 claimed_task = classifier_decision.task_to_claim
+
                     elif classifier_decision.response_type in {
                         "answer_question",
                         "review",
@@ -861,8 +872,10 @@ def run_hub_loop() -> None:
                             max_tokens=controls.max_tokens,
                             known_context=known_context,
                         )
+
                     elif classifier_decision.response_type == "clarify":
                         response = build_classifier_clarify_response()
+
                     else:
                         continue
 

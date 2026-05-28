@@ -113,6 +113,16 @@ Rules:
 - If the message asks for planning or coordination help, response_type="plan".
 - If unsure and not directly mentioned, should_respond=false and response_type="ignore".
 
+State-machine routing rules:
+- Use recent context to infer the current collaboration state.
+- Identify whether the team is in planning, task claiming, implementation, review/testing, or finalization.
+- If a reasonable task split already exists, do not classify as plan unless the current message explicitly asks for replanning.
+- If this agent has already claimed a task, do not classify as claim_task again.
+- If another agent has already claimed a task in recent context, do not claim that same task.
+- If implementation has started or code is visible, prefer review/testing over new planning.
+- If all tasks appear complete, prefer review or final summary instead of new work.
+- The first reasonable task split in recent context should be treated as the active plan unless it is clearly broken.
+
 Return only valid JSON with these keys:
 should_respond, response_type, assigned_role, task_to_claim, confidence, reason.
 """.strip()
