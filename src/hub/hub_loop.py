@@ -583,6 +583,8 @@ def run_hub_loop() -> None:
     COLLABORATION_STALL_SECONDS = 45
     recent_context = deque(maxlen=RECENT_CONTEXT_LIMIT)
     claimed_task = None
+    last_chat_role_response_sender = None
+    waiting_for_code_review = False
 
     try:
         # Load existing messages once so the agent does not reply to old hub history.
@@ -692,6 +694,18 @@ def run_hub_loop() -> None:
                         content=content,
                     )
 
+                    # Avoid repeating the same chat-role handoff response to the same sender.
+                    if (
+                        response.startswith("Accepted,")
+                        and last_chat_role_response_sender == sender
+                    ):
+                        hub_log(f"Skipping duplicate chat-role handoff response to {sender}.")
+                        continue
+
+                    if response.startswith("Accepted,"):
+                        last_chat_role_response_sender = sender
+
+                    # Final safety layer before anything is printed or posted to the shared hub.
                     response = sanitize_hub_response(response, fallback_sender=sender)
 
                     if HUB_DRY_RUN:
@@ -717,13 +731,20 @@ def run_hub_loop() -> None:
                     continue
 
                 classifier_decision = None
-                deterministic_should_respond = should_respond_to_message(message)
                 known_context = (
                     f"Current claimed task by {HUB_AGENT_NAME}: {claimed_task or 'none'}\n\n"
                     f"Recent hub messages:\n{format_recent_context(recent_context)}"
                 )
 
-                if not deterministic_should_respond:
+                force_code_review = (
+                    waiting_for_code_review
+                    and sender.lower().strip() != HUB_AGENT_NAME.lower()
+                    and contains_code_block(content)
+                )
+
+                deterministic_should_respond = should_respond_to_message(message)
+
+                if not deterministic_should_respond and not force_code_review:
                     if not (
                         HUB_ENABLE_GROUP_MENTIONS
                         and is_broad_collaboration_candidate(content)
@@ -751,7 +772,7 @@ def run_hub_loop() -> None:
                         continue
 
                     if (
-                        classifier_decision.confidence < 0.55
+                        classifier_decision.confidence < 0.70
                         and not is_direct_mention_for_agent(content)
                     ):
                         hub_log("Classifier confidence too low. Staying silent.")
@@ -796,19 +817,30 @@ def run_hub_loop() -> None:
 
                 response = None
 
-                if classifier_decision is not None:
-                    if classifier_decision.response_type == "identify":
-                        response = build_classifier_identify_response(content)
-                    elif classifier_decision.response_type == "acknowledge_workflow_role":
-                        response = build_workflow_role_ack_response(content)
-                    elif classifier_decision.response_type == "claim_task":
-                        if claimed_task:
-                            response = build_classifier_already_claimed_response(claimed_task)
-                        else:
-                            response = build_classifier_task_claim_response(
-                                classifier_decision.task_to_claim,
-                                content,
-                            )
+                if force_code_review:
+                    response = build_response(
+                        message,
+                        intent="review",
+                        max_tokens=controls.max_tokens,
+                        known_context=known_context,
+                    )
+                    waiting_for_code_review = False
+
+                elif classifier_decision is not None:
+
+                    if classifier_decision is not None:
+                        if classifier_decision.response_type == "identify":
+                            response = build_classifier_identify_response(content)
+                        elif classifier_decision.response_type == "acknowledge_workflow_role":
+                            response = build_workflow_role_ack_response(content)
+                        elif classifier_decision.response_type == "claim_task":
+                            if claimed_task:
+                                response = build_classifier_already_claimed_response(claimed_task)
+                            else:
+                                response = build_classifier_task_claim_response(
+                                    classifier_decision.task_to_claim,
+                                    content,
+                                )
 
                             if classifier_decision.task_to_claim:
                                 claimed_task = classifier_decision.task_to_claim
@@ -880,6 +912,15 @@ def run_hub_loop() -> None:
                                 known_context=known_context,
                             )
 
+                response_lower = response.lower()
+
+                if (
+                    "please share the implementation code" in response_lower
+                    or "i will review the shared code" in response_lower
+                    or "once the implementation is posted" in response_lower
+                    or "please share proposed code" in response_lower
+                ):
+                    waiting_for_code_review = True
                 # Final safety layer before anything is printed or posted to the shared hub.
                 response = sanitize_hub_response(response, fallback_sender=sender)
 

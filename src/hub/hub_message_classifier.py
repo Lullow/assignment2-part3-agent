@@ -106,8 +106,12 @@ Rules:
 - If a coordinator asks agents/remaining agents to pick up open tasks and this agent has not already claimed a task, response_type="claim_task".
 - Prefer claiming at most one small task.
 - If multiple tasks are available and no task is assigned specifically, prefer README/demo, tests, or review over taking the whole implementation.
+- If recent context already contains a task split or claimed tasks, do not propose a new split.
+- If another agent is coordinating effectively, support that plan instead of competing.
+- If visible code exists and the current message asks for review/testing, response_type="review".
 - If the message asks for review, response_type="review".
 - If the message asks for planning or coordination help, response_type="plan".
+- If unsure and not directly mentioned, should_respond=false and response_type="ignore".
 
 Return only valid JSON with these keys:
 should_respond, response_type, assigned_role, task_to_claim, confidence, reason.
