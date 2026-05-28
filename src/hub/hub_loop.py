@@ -5,12 +5,13 @@ from requests import RequestException
 from src.hub.hub_responder import build_llm_collaboration_response
 from src.hub.hub_response_guard import sanitize_hub_response
 from src.hub.hub_client import fetch_messages, post_message, get_stats
-from src.hub.hub_intent import detect_hub_intent, should_handle_intent
+from src.hub.hub_intent import detect_hub_intent
 from src.hub.hub_task_proposal import build_task_proposal
 from src.hub.hub_delegation import build_delegation_proposal
 from src.hub.hub_task_queue import HubTaskQueue
 from src.hub.hub_group_response import build_group_coordination_response
 from src.hub.hub_collaboration_role import choose_collaboration_role
+from src.hub.hub_response_decision import decide_hub_response
 from src.hub.hub_config import (
     HUB_AGENT_NAME,
     HUB_DRY_RUN,
@@ -311,27 +312,36 @@ def run_hub_loop() -> None:
                 if seq is not None:
                     last_seen = max(last_seen, seq)
 
-                if not should_respond_to_message(message):
-                    continue
-
                 sender = message.get("agent_name", "unknown-agent")
                 content = message.get("content", "")
 
+                # Hard safety gate: never respond to ourselves or empty messages.
+                if sender == HUB_AGENT_NAME:
+                    continue
+
+                if not content:
+                    continue
+
                 mentions_group = HUB_ENABLE_GROUP_MENTIONS and is_group_mention(content)
 
-                # Detect intent before responding so the agent only handles relevant messages.
+                # Keyword intent is now only a hint, not the final routing decision.
                 intent = detect_hub_intent(content)
 
-                suggested_role = choose_collaboration_role(
-                content=content,
-                intent=intent,
-                is_group_context=mentions_group,
-            )
+                decision = decide_hub_response(
+                    message,
+                    intent=intent,
+                    is_group_context=mentions_group,
+                )
 
-                # Ignore mentions that do not match supported collaboration intents.
-                if not should_handle_intent(intent):
-                    print(f"Ignoring mention from {sender} with unsupported intent: {intent}")
+                if not decision.should_respond:
+                    print(f"Ignoring message from {sender}: {decision.reason}")
                     continue
+
+                suggested_role = choose_collaboration_role(
+                    content=content,
+                    intent=intent,
+                    is_group_context=mentions_group,
+                )
 
                 # Pause mode keeps the agent online but prevents it from posting.
                 if controls.paused:
@@ -345,6 +355,7 @@ def run_hub_loop() -> None:
 
                 print(f"Received mention from {sender}: {content}")
                 print(f"Detected intent: {intent}")
+                print(f"Decision: {decision.response_type} - {decision.reason}")
 
                 if mentions_group:
                     response = build_group_coordination_response(

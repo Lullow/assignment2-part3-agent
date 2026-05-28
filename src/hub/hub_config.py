@@ -35,6 +35,15 @@ HUB_APPROVED_TASK_RUNNER = os.getenv("HUB_APPROVED_TASK_RUNNER", "placeholder").
 # Safety switch: keep LLM responses disabled by default until explicitly enabled.
 HUB_USE_LLM_RESPONDER = os.getenv("HUB_USE_LLM_RESPONDER", "false").strip().lower() == "true"
 
+# Optional LLM-based decision gate for deciding whether a hub message deserves a response.
+# This helps the agent behave more flexibly in unpredictable multi-agent chats.
+HUB_USE_LLM_RESPONSE_DECISION = (
+    os.getenv("HUB_USE_LLM_RESPONSE_DECISION", "false").strip().lower() == "true"
+)
+
+# Small token cap because the decision gate should only return a tiny JSON decision.
+HUB_DECISION_MAX_TOKENS = int(os.getenv("HUB_DECISION_MAX_TOKENS", "120"))
+
 # Token cap for hub responses to avoid overly long replies and unnecessary cost.
 HUB_RESPONDER_MAX_TOKENS = int(os.getenv("HUB_RESPONDER_MAX_TOKENS", "200"))
 
@@ -86,3 +95,6 @@ def validate_hub_config() -> None:
 
     if HUB_RESPONDER_MAX_TOKENS <= 0:
         raise ValueError("HUB_RESPONDER_MAX_TOKENS must be greater than 0.")
+
+    if HUB_DECISION_MAX_TOKENS <= 0:
+        raise ValueError("HUB_DECISION_MAX_TOKENS must be greater than 0.")
