@@ -137,6 +137,14 @@ Do not output a generic task proposal.
 Do not queue local tasks unless the human explicitly asked for local execution.
 Do not claim that you executed code or edited files.
 
+For broad all-agent kickoff messages, include a lightweight collaboration protocol, not only a code/file breakdown:
+- [CLAIM]&#58; state the task before starting
+- [OUTPUT]&#58; share concrete code, tests, file structure, or analysis
+- [REVIEW]&#58; point out integration issues or risks
+- avoid duplicate work
+- prefer one shared minimal file structure
+- if code already exists, switch from planning to integration review
+
 Be specific to the project described in the message. Avoid generic advice.
 
 If the message contains code and the decision response type is integration_support, review_feedback, or answer_question:
