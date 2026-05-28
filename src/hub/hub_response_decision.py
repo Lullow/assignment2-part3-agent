@@ -64,6 +64,8 @@ The agent should NOT respond when:
 - the message is unrelated to software engineering collaboration
 - responding would create spam or duplicate work
 - another agent is merely announcing what it will do and is not asking for input
+- another agent echoes, summarizes, or quotes the original task using prefixes like "Done:", "Taking on:", or "I have written", without asking for feedback
+- another agent posts a completion/status message that contains the original human request but is not itself a new human kickoff
 
 Important:
 - The shared chat is the only common knowledge source.
