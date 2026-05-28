@@ -2,14 +2,7 @@ import time
 
 from requests import RequestException
 
-from src.hub.hub_responder import build_llm_collaboration_response
-from src.hub.hub_response_guard import sanitize_hub_response
-from src.hub.hub_client import fetch_messages, post_message, get_stats
-from src.hub.hub_intent import detect_hub_intent
-from src.hub.hub_task_proposal import build_task_proposal
-from src.hub.hub_delegation import build_delegation_proposal
-from src.hub.hub_task_queue import HubTaskQueue
-from src.hub.hub_response_decision import decide_hub_response
+from src.hub.hub_client import fetch_messages, post_message
 from src.hub.hub_config import (
     HUB_AGENT_NAME,
     HUB_DRY_RUN,
@@ -23,10 +16,15 @@ from src.hub.hub_config import (
     HUB_ENABLE_GROUP_MENTIONS,
     validate_hub_config,
 )
+from src.hub.hub_intent import detect_hub_intent
+from src.hub.hub_response_decision import decide_hub_response
+from src.hub.hub_responder import build_llm_collaboration_response
+from src.hub.hub_response_guard import sanitize_hub_response
 from src.hub.hub_runtime_controls import (
     HubRuntimeControls,
     start_console_control_thread,
 )
+
 
 GROUP_MENTION_KEYWORDS = [
     "@all",
@@ -41,6 +39,7 @@ GROUP_MENTION_KEYWORDS = [
     "all agents",
     "all bots",
 ]
+
 
 def get_message_seq(message: dict) -> int | None:
     """
@@ -61,52 +60,6 @@ def get_message_seq(message: dict) -> int | None:
     return None
 
 
-def is_mention_for_agent(content: str) -> bool:
-    """
-    Check if a message mentions this agent.
-
-    A message counts as a mention if it contains:
-    - @agent-name
-    - agent-name
-    """
-
-    normalized_content = content.lower()
-    normalized_agent_name = HUB_AGENT_NAME.lower()
-
-    return (
-        f"@{normalized_agent_name}" in normalized_content
-        or normalized_agent_name in normalized_content
-    )
-
-
-def should_respond_to_message(message: dict) -> bool:
-    """
-    Decide whether this agent should respond to a hub message.
-
-    The agent should:
-    - ignore its own messages
-    - ignore empty messages
-    - respond to direct mentions
-    - optionally respond to group mentions when enabled
-    """
-
-    sender = message.get("agent_name", "")
-    content = message.get("content", "")
-
-    # Avoid responding to our own messages and creating a feedback loop.
-    if sender == HUB_AGENT_NAME:
-        return False
-
-    # Ignore empty messages because there is nothing meaningful to process.
-    if not content:
-        return False
-
-    mentions_this_agent = is_mention_for_agent(content)
-    mentions_group = HUB_ENABLE_GROUP_MENTIONS and is_group_mention(content)
-
-    return mentions_this_agent or mentions_group
-
-
 def build_simple_response(message: dict) -> str:
     """
     Build a safe minimal response.
@@ -119,7 +72,8 @@ def build_simple_response(message: dict) -> str:
     return (
         f"Hi {sender}, this is {HUB_AGENT_NAME}. "
         "I received your message. I am currently running in safe hub mode, "
-        "so I can acknowledge mentions but I am not executing code or editing files yet."
+        "so I can acknowledge relevant hub messages but I am not executing code "
+        "or editing files automatically."
     )
 
 
@@ -142,7 +96,6 @@ def build_response(
 
     if HUB_USE_LLM_RESPONDER:
         try:
-            # Use the LLM responder only when explicitly enabled in config.
             return build_llm_collaboration_response(
                 message,
                 intent=intent,
@@ -151,82 +104,10 @@ def build_response(
                 decision_reason=decision_reason,
             )
         except Exception as error:
-            # Keep the hub loop alive even if the LLM provider fails.
             print(f"LLM responder failed, falling back to simple response: {error}")
             return build_simple_response(message)
 
-    # Default safe mode: acknowledge mentions without calling the LLM.
     return build_simple_response(message)
-
-
-def get_known_agents_from_hub() -> list[str]:
-    """
-    Fetch known agent names from the hub stats endpoint.
-
-    If the hub stats request fails, return an empty list so delegation
-    can still work without active agent information.
-    """
-
-    try:
-        stats = get_stats()
-    except RequestException as error:
-        print(f"Could not fetch hub stats for delegation: {error}")
-        return []
-
-    per_agent = stats.get("per_agent", {})
-
-    if not isinstance(per_agent, dict):
-        return []
-
-    return sorted(per_agent.keys())
-
-
-def build_task_aware_response(
-    message: dict,
-    intent: str,
-    max_tokens: int | None = None,
-    task_queue: HubTaskQueue | None = None,
-) -> str:
-    """
-    Build a response based on the detected hub intent.
-
-    Task execution requests are converted into safe task proposals.
-    Delegation requests are converted into safe delegation proposals.
-
-    The agent does not execute hub tasks automatically.
-    """
-
-    if intent == "execute_task":
-        proposal = build_task_proposal(message, intent)
-
-        if HUB_EXECUTION_MODE == "manual_approval" and task_queue is not None:
-            sender = message.get("agent_name", "unknown-agent")
-            content = message.get("content", "")
-
-            queued_task = task_queue.add_task(
-                sender=sender,
-                content=content,
-                intent=intent,
-            )
-
-            proposal += (
-                "\n\n"
-                f"Queued locally for manual approval as task #{queued_task.task_id}.\n"
-                "Use `/tasks` in the local console to view pending tasks.\n"
-                f"Use `/approve {queued_task.task_id}` or `/reject {queued_task.task_id}`."
-            )
-
-        return proposal
-
-    if intent == "delegate_task":
-        known_agents = get_known_agents_from_hub()
-        return build_delegation_proposal(message, known_agents=known_agents)
-
-    return build_response(
-        message,
-        intent=intent,
-        max_tokens=max_tokens,
-    )
 
 
 def is_group_mention(content: str) -> bool:
@@ -242,18 +123,21 @@ def is_group_mention(content: str) -> bool:
     return any(keyword in normalized for keyword in GROUP_MENTION_KEYWORDS)
 
 
-
 def run_hub_loop() -> None:
     """
     Run the hub polling loop.
 
-    This loop fetches new messages, responds only to mentions,
-    and respects the hub rate limit by sleeping between requests.
+    The loop uses a simple architecture:
+    1. Fetch new hub messages.
+    2. Apply hard Python safety checks.
+    3. Use keyword intent only as a lightweight hint.
+    4. Use the LLM decision gate to decide whether to respond.
+    5. Generate a safe text-only response.
+    6. Sanitize before printing or posting.
     """
 
     validate_hub_config()
 
-    # Runtime controls can be changed while the loop is running through console commands.
     controls = HubRuntimeControls(
         paused=False,
         should_stop=False,
@@ -261,10 +145,8 @@ def run_hub_loop() -> None:
         max_tokens=HUB_RESPONDER_MAX_TOKENS,
     )
 
-    task_queue = HubTaskQueue()
-
     # Start local console controls in the background without blocking hub polling.
-    start_console_control_thread(controls, task_queue=task_queue)
+    start_console_control_thread(controls)
 
     responses_sent = 0
     last_seen = 0
@@ -326,7 +208,7 @@ def run_hub_loop() -> None:
 
                 mentions_group = HUB_ENABLE_GROUP_MENTIONS and is_group_mention(content)
 
-                # Keyword intent is now only a hint, not the final routing decision.
+                # Keyword intent is only a hint, not the final routing decision.
                 intent = detect_hub_intent(content)
 
                 decision = decide_hub_response(
@@ -341,7 +223,7 @@ def run_hub_loop() -> None:
 
                 # Pause mode keeps the agent online but prevents it from posting.
                 if controls.paused:
-                    print(f"Agent is paused. Ignoring mention from {sender}.")
+                    print(f"Agent is paused. Ignoring relevant message from {sender}.")
                     continue
 
                 # Safety cap to avoid spamming the hub or using too many LLM calls.
@@ -349,7 +231,7 @@ def run_hub_loop() -> None:
                     print("Max responses reached for this run. Staying online but not posting more responses.")
                     continue
 
-                print(f"Received mention from {sender}: {content}")
+                print(f"Received relevant message from {sender}: {content}")
                 print(f"Detected intent: {intent}")
                 print(f"Decision: {decision.response_type} - {decision.reason}")
 
@@ -365,7 +247,6 @@ def run_hub_loop() -> None:
                 response = sanitize_hub_response(response, fallback_sender=sender)
 
                 if HUB_DRY_RUN:
-                    # Dry-run mode shows what would be posted without sending it to the hub.
                     responses_sent += 1
                     print("Dry run enabled. Would post response:")
                     print(response)
@@ -392,7 +273,6 @@ def run_hub_loop() -> None:
     except KeyboardInterrupt:
         controls.should_stop = True
         print("\nHub loop stopped by user.")
-
 
 
 if __name__ == "__main__":
