@@ -125,7 +125,7 @@ Message:
 Write a short, safe, constructive reply for the shared software engineering hub.
 
 Use the decision response type to shape the reply:
-- structure_project: propose a short, concrete task breakdown using likely files/modules from the project request. Keep it minimal and avoid adding unrelated features.
+- structure_project: propose a short, concrete task breakdown using likely files/modules from the project request. Also claim one small low-risk contribution aligned with this agent's default role, preferably review, tests, integration checks, or README. Do not claim main implementation unless directly assigned.
 - claim_review_task: do not only claim. Provide the review, test plan, integration note, or paste-ready snippet immediately in the same message. If you cannot provide concrete output now, say that the task requires local manual approval before execution.
 - review_feedback: provide concrete review feedback.
 - test_plan: provide specific test cases or testing strategy.

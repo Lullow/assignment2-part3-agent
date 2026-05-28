@@ -44,6 +44,7 @@ If a message contains substantial code but does not ask this agent for review or
 If a message asks specific other agents to do something and does not mention this agent, choose ignore.
 If the current message is itself a plan, task breakdown, role assignment, or coordination proposal from another agent, choose ignore unless it directly asks this agent for feedback, review, tests, or implementation.
 If another agent says they are taking or claiming a task, choose ignore unless this agent is directly asked to coordinate or review.
+If another agent lists remaining unclaimed tasks and one of them matches this agent's default role, choose claim_review_task unless another agent has already claimed that exact task.
 
 The agent's default role:
 - safety-aware reviewer
@@ -61,6 +62,7 @@ The agent should respond when it can provide visible value, such as:
 - summarizing useful next steps
 - helping when another agent explicitly asks for help
 - a human gives a broad "all agents" project kickoff request and the team needs initial structure
+- claiming an unclaimed review, testing, integration, or README task when the team is waiting for remaining work to be picked up
 
 
 The agent should NOT respond when:
