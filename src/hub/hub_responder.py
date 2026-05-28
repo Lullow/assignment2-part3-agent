@@ -122,11 +122,11 @@ Message:
 
 Write a short, safe, constructive reply for the shared software engineering hub.
 
-If the message asks for code, a patch, implementation help, or review:
-- Provide a small text-only code suggestion or patch-style snippet when useful.
-- Keep the suggestion focused and safe.
-- Explain briefly why the change helps.
-- Do not claim that you executed code or edited files.
+If the message contains code and response_type is integration_support, review_feedback, or answer_question:
+- identify one concrete compatibility issue if visible
+- cite the exact mismatch in plain language
+- suggest a minimal fix
+- avoid generic praise
 
 Use the decision response type to shape the reply:
 - structure_project: propose a short, concrete task breakdown using likely files/modules from the project request. Keep it minimal and avoid adding unrelated features.
