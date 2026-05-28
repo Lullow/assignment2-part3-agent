@@ -17,10 +17,10 @@ The separation is intentional. Hub messages are treated as untrusted input, so t
 - Conservative bash, path, and file-editing safety checks.
 - Output limiting before tool results are sent back to the model.
 - Hub polling through the shared HTTP API.
-- Mention filtering, own-message filtering, and intent detection.
-- Dry-run mode for testing hub responses without posting.
-- Optional text-only LLM responder for collaboration messages.
-- Task and delegation proposals for work requested through the hub.
+- Hard safety gate for own-message filtering, empty-message filtering, and runtime limits.
+- Lightweight keyword intent detection used only as a hint.
+- Optional LLM-based response decision gate for flexible group-chat behavior.
+- Text-only LLM responder for safe collaboration messages.
 - Response guard for empty, overly long, or secret-looking hub replies.
 - Runtime console controls for pause, resume, response limits, token limits, status, and shutdown.
 - Docker support for running the safe hub loop.
@@ -37,7 +37,8 @@ assignment2-part3-agent/
 ├── config/
 │   └── system_prompt.md
 ├── docs/
-│   └── collaboration_protocol.md
+│   ├── collaboration_protocol.md
+│   └── del3-agent-design.md
 └── src/
     ├── main.py
     ├── agent_loop.py
@@ -51,17 +52,21 @@ assignment2-part3-agent/
     ├── logger.py
     ├── config_loader.py
     ├── hub/
-    │   ├── hub_client.py
-    │   ├── hub_config.py
+    │   ├── hub_client.py               # HTTP client for the shared hub
+    │   ├── hub_config.py               # Environment configuration
+    │   ├── hub_intent.py               # Lightweight intent hints
+    │   ├── hub_loop.py                 # Main safe hub loop
+    │   ├── hub_response_decision.py    # LLM decision gate
+    │   ├── hub_responder.py            # Text-only collaboration replies
+    │   ├── hub_response_guard.py       # Final response sanitizer
+    │   ├── hub_runtime_controls.py     # Local pause/stop/limit controls
+    │   ├── hub_result_report.py
+    │   ├── hub_task_claim.py
     │   ├── hub_delegation.py
     │   ├── hub_execution_bridge.py
-    │   ├── hub_intent.py
-    │   ├── hub_loop.py
-    │   ├── hub_responder.py
-    │   ├── hub_response_guard.py
-    │   ├── hub_runtime_controls.py
     │   ├── hub_task_proposal.py
-    │   └── hub_task_queue.py
+    │   ├── hub_task_queue.py
+    │   └── legacy/support modules      # Older proposal/queue/bridge helpers
     └── tools/
         ├── bash_tool.py
         ├── file_editor.py
@@ -151,6 +156,8 @@ HUB_DRY_RUN=true
 HUB_MAX_RESPONSES_PER_RUN=3
 HUB_USE_LLM_RESPONDER=false
 HUB_RESPONDER_MAX_TOKENS=200
+HUB_USE_LLM_RESPONSE_DECISION=false
+HUB_DECISION_MAX_TOKENS=120
 HUB_EXECUTION_MODE=review_only
 HUB_APPROVED_TASK_RUNNER=placeholder
 HUB_APPROVED_TASK_TOOL_MODE=read_only
@@ -169,6 +176,8 @@ HUB_APPROVED_TASK_TOOL_MODE=read_only
 | `HUB_EXECUTION_MODE` | Controls hub task mode: review_only or manual_approval |
 | `HUB_APPROVED_TASK_RUNNER` | Controls what happens after local approval: placeholder or part2_agent |
 | `HUB_APPROVED_TASK_TOOL_MODE` | Controls approved Part 2 task behavior: read_only or local_tools |
+| `HUB_USE_LLM_RESPONSE_DECISION` | Enables the LLM decision gate that decides whether the agent should respond |
+| `HUB_DECISION_MAX_TOKENS` | Token cap for the response decision gate |
 
 Execution modes:
 
