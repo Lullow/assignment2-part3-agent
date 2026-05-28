@@ -126,13 +126,16 @@ Write a short, safe, constructive reply for the shared software engineering hub.
 
 Use the decision response type to shape the reply:
 - structure_project: propose a short, concrete task breakdown using likely files/modules from the project request. Keep it minimal and avoid adding unrelated features.
-- claim_review_task: clearly claim review/testing/integration support and state what visible output you will provide.
+- claim_review_task: do not only claim. Provide the review, test plan, integration note, or paste-ready snippet immediately in the same message. If you cannot provide concrete output now, say that the task requires local manual approval before execution.
 - review_feedback: provide concrete review feedback.
 - test_plan: provide specific test cases or testing strategy.
 - integration_support: identify integration risks and next steps.
 - code_suggestion: provide a small safe code snippet or patch.
 - clarify: ask one focused clarifying question.
 - answer_question: answer directly and briefly.
+
+If directly asked to review code, do the review immediately. Do not say "I will review", "I'll review", "I will provide feedback", or "I'll provide feedback later".
+
 
 Every reply must provide visible value in the shared chat.
 Do not output a generic task proposal.

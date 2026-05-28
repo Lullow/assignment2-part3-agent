@@ -20,6 +20,7 @@ from src.hub.hub_intent import detect_hub_intent
 from src.hub.hub_response_decision import decide_hub_response
 from src.hub.hub_responder import build_llm_collaboration_response
 from src.hub.hub_response_guard import sanitize_hub_response
+from src.hub.hub_task_queue import HubTaskQueue
 from src.hub.hub_runtime_controls import (
     HubRuntimeControls,
     start_console_control_thread,
@@ -40,6 +41,99 @@ GROUP_MENTION_KEYWORDS = [
     "all bots",
 ]
 
+IMPLEMENTATION_KEYWORDS = [
+    "write",
+    "create",
+    "fix",
+    "implement",
+    "build",
+    "add",
+    "make",
+    "generate",
+    "skriv",
+    "skapa",
+    "fixa",
+    "implementera",
+    "bygg",
+    "lägg till",
+]
+
+FILE_HINTS = [
+    ".py",
+    ".js",
+    ".html",
+    ".css",
+    ".md",
+    ".txt",
+    ".json",
+    ".yml",
+    ".yaml",
+    "file",
+    "module",
+    "endpoint",
+    "test",
+    "tests",
+    "backend",
+    "frontend",
+]
+
+
+def is_direct_mention_for_agent(content: str) -> bool:
+    """
+    Check whether the message directly addresses this agent.
+
+    This is intentionally stricter than group mentions. It is used only for
+    deciding whether a task may be queued for local manual approval.
+    """
+
+    normalized_content = content.lower()
+    normalized_agent_name = HUB_AGENT_NAME.lower()
+
+    return (
+        f"@{normalized_agent_name}" in normalized_content
+        or normalized_agent_name in normalized_content
+    )
+
+
+def looks_like_implementation_request(content: str) -> bool:
+    """
+    Check whether a message asks for concrete implementation work.
+
+    This is only a heuristic. It does not execute anything by itself.
+    The task still requires local manual approval before tools can run.
+    """
+
+    normalized = content.lower()
+
+    has_action = any(keyword in normalized for keyword in IMPLEMENTATION_KEYWORDS)
+    has_file_or_code_hint = any(hint in normalized for hint in FILE_HINTS)
+
+    return has_action and has_file_or_code_hint
+
+
+def should_queue_for_manual_approval(message: dict, response_type: str | None) -> bool:
+    """
+    Decide whether a hub message should become a local approval task.
+
+    Rules:
+    - only direct messages to this agent
+    - only concrete implementation-like requests
+    - only when the decision gate already chose to respond
+    - never broad group kickoff messages
+    """
+
+    content = message.get("content", "")
+
+    if not is_direct_mention_for_agent(content):
+        return False
+
+    if is_group_mention(content):
+        return False
+
+    if response_type not in {"claim_review_task", "code_suggestion", "integration_support"}:
+        return False
+
+    return looks_like_implementation_request(content)
 
 def get_message_seq(message: dict) -> int | None:
     """
@@ -145,8 +239,10 @@ def run_hub_loop() -> None:
         max_tokens=HUB_RESPONDER_MAX_TOKENS,
     )
 
+    task_queue = HubTaskQueue()
+
     # Start local console controls in the background without blocking hub polling.
-    start_console_control_thread(controls)
+    start_console_control_thread(controls, task_queue=task_queue)
 
     responses_sent = 0
     last_seen = 0
@@ -235,13 +331,28 @@ def run_hub_loop() -> None:
                 print(f"Detected intent: {intent}")
                 print(f"Decision: {decision.response_type} - {decision.reason}")
 
-                response = build_response(
-                    message,
-                    intent=intent,
-                    max_tokens=controls.max_tokens,
-                    response_type=decision.response_type,
-                    decision_reason=decision.reason,
-                )
+                if should_queue_for_manual_approval(message, decision.response_type):
+                    queued_task = task_queue.add_task(
+                        sender=sender,
+                        content=content,
+                        intent=intent,
+                    )
+
+                    response = (
+                        f"[CLAIM]: I can take this task via local manual approval.\n"
+                        f"[OUTPUT]: Queued locally as task #{queued_task.task_id}. "
+                        f"I will only execute tools after local approval.\n"
+                        f"[NEXT]: Use `/tasks` locally to inspect it, then "
+                        f"`/approve {queued_task.task_id}` or `/reject {queued_task.task_id}`."
+                    )
+                else:
+                    response = build_response(
+                        message,
+                        intent=intent,
+                        max_tokens=controls.max_tokens,
+                        response_type=decision.response_type,
+                        decision_reason=decision.reason,
+                    )
 
                 # Final safety layer before anything is printed or posted to the shared hub.
                 response = sanitize_hub_response(response, fallback_sender=sender)
