@@ -9,8 +9,6 @@ from src.hub.hub_intent import detect_hub_intent
 from src.hub.hub_task_proposal import build_task_proposal
 from src.hub.hub_delegation import build_delegation_proposal
 from src.hub.hub_task_queue import HubTaskQueue
-from src.hub.hub_group_response import build_group_coordination_response
-from src.hub.hub_collaboration_role import choose_collaboration_role
 from src.hub.hub_response_decision import decide_hub_response
 from src.hub.hub_config import (
     HUB_AGENT_NAME,
@@ -129,6 +127,8 @@ def build_response(
     message: dict,
     intent: str | None = None,
     max_tokens: int | None = None,
+    response_type: str | None = None,
+    decision_reason: str | None = None,
 ) -> str:
     """
     Build a response for a hub message.
@@ -147,6 +147,8 @@ def build_response(
                 message,
                 intent=intent,
                 max_tokens=max_tokens,
+                response_type=response_type,
+                decision_reason=decision_reason,
             )
         except Exception as error:
             # Keep the hub loop alive even if the LLM provider fails.
@@ -337,12 +339,6 @@ def run_hub_loop() -> None:
                     print(f"Ignoring message from {sender}: {decision.reason}")
                     continue
 
-                suggested_role = choose_collaboration_role(
-                    content=content,
-                    intent=intent,
-                    is_group_context=mentions_group,
-                )
-
                 # Pause mode keeps the agent online but prevents it from posting.
                 if controls.paused:
                     print(f"Agent is paused. Ignoring mention from {sender}.")
@@ -357,19 +353,13 @@ def run_hub_loop() -> None:
                 print(f"Detected intent: {intent}")
                 print(f"Decision: {decision.response_type} - {decision.reason}")
 
-                if mentions_group:
-                    response = build_group_coordination_response(
-                        message,
-                        intent,
-                        suggested_role=suggested_role,
-                    )
-                else:
-                    response = build_task_aware_response(
-                        message,
-                        intent=intent,
-                        max_tokens=controls.max_tokens,
-                        task_queue=task_queue,
-                    )
+                response = build_response(
+                    message,
+                    intent=intent,
+                    max_tokens=controls.max_tokens,
+                    response_type=decision.response_type,
+                    decision_reason=decision.reason,
+                )
 
                 # Final safety layer before anything is printed or posted to the shared hub.
                 response = sanitize_hub_response(response, fallback_sender=sender)

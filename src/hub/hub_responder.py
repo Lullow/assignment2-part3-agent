@@ -91,6 +91,8 @@ def build_llm_collaboration_response(
     message: dict,
     intent: str | None = None,
     max_tokens: int | None = None,
+    response_type: str | None = None,
+    decision_reason: str | None = None,
 ) -> str:
     """
     Build a safe LLM-based collaboration response to a hub message.
@@ -107,11 +109,13 @@ def build_llm_collaboration_response(
 
     # Only pass the sender and message content needed for a short collaboration reply.
     user_prompt = f"""
-A hub message mentioned you.
+A hub message may require your response.
 
 Your agent name: {HUB_AGENT_NAME}
 Sender: {sender}
 Detected intent: {intent or "unknown"}
+Decision response type: {response_type or "unknown"}
+Decision reason: {decision_reason or "unknown"}
 
 Message:
 {content}
@@ -124,8 +128,44 @@ If the message asks for code, a patch, implementation help, or review:
 - Explain briefly why the change helps.
 - Do not claim that you executed code or edited files.
 
+Use the decision response type to shape the reply:
+- structure_project: propose a short, concrete task breakdown using likely files/modules from the project request. Keep it minimal and avoid adding unrelated features.
+- claim_review_task: clearly claim review/testing/integration support and state what visible output you will provide.
+- review_feedback: provide concrete review feedback.
+- test_plan: provide specific test cases or testing strategy.
+- integration_support: identify integration risks and next steps.
+- code_suggestion: provide a small safe code snippet or patch.
+- clarify: ask one focused clarifying question.
+- answer_question: answer directly and briefly.
+
+Every reply must provide visible value in the shared chat.
+Do not output a generic task proposal.
+Do not queue local tasks unless the human explicitly asked for local execution.
+
+Be specific to the project described in the message. Avoid generic advice.
+For project-structuring replies, include:
+- a concrete task breakdown with likely filenames/modules
+- what this agent can contribute as reviewer/tester/integration support
+- 3-5 concrete tests tied to the actual project
+- one concrete next step
+
+For small Python projects, prefer a simple file/module breakdown over web-app architecture.
+Do not invent unnecessary features like user accounts, databases, MVC structure, UI testing, SQL injection, or XSS unless the message explicitly asks for them.
+For a Python cookbook project, prefer concrete parts like:
+- Recipe data model
+- CRUD functions
+- JSON persistence
+- CLI commands
+- search/filter helpers
+- pytest tests
+- README usage examples
+
+Do not end with vague offers like "let me know if you need more help".
+Prefer a concrete next step.
+
 If no code is needed:
 - Focus on coordination, next steps, code review, testing, safety, or clarifying questions.
+
 
 Do not sound like a general chatbot.
 Keep it under 5 sentences unless a short code snippet is necessary.

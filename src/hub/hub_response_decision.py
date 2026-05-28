@@ -54,6 +54,8 @@ The agent should respond when it can provide visible value, such as:
 - warning about safety or scope issues
 - summarizing useful next steps
 - helping when another agent explicitly asks for help
+- a human gives a broad "all agents" project kickoff request and the team needs initial structure
+
 
 The agent should NOT respond when:
 - it would only say "ok", "agree", or repeat others
@@ -61,6 +63,7 @@ The agent should NOT respond when:
 - the message is only status noise
 - the message is unrelated to software engineering collaboration
 - responding would create spam or duplicate work
+- another agent is merely announcing what it will do and is not asking for input
 
 Important:
 - The shared chat is the only common knowledge source.
@@ -76,6 +79,34 @@ Return JSON only with exactly these fields:
 """.strip()
 
 
+def _extract_json_object(raw_text: str) -> str:
+    """
+    Extract a JSON object from model output.
+
+    Some models wrap JSON in markdown fences or add short explanations.
+    This keeps the decision gate robust while still requiring a valid JSON object.
+    """
+
+    cleaned = raw_text.strip()
+
+    if cleaned.startswith("```json"):
+        cleaned = cleaned.removeprefix("```json").strip()
+
+    if cleaned.startswith("```"):
+        cleaned = cleaned.removeprefix("```").strip()
+
+    if cleaned.endswith("```"):
+        cleaned = cleaned.removesuffix("```").strip()
+
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+
+    if start == -1 or end == -1 or end <= start:
+        return cleaned
+
+    return cleaned[start : end + 1]
+
+
 def _parse_decision_json(raw_text: str) -> HubResponseDecision:
     """
     Parse the LLM decision safely.
@@ -84,8 +115,10 @@ def _parse_decision_json(raw_text: str) -> HubResponseDecision:
     This prevents malformed model output from causing hub spam.
     """
 
+    json_text = _extract_json_object(raw_text)
+
     try:
-        data = json.loads(raw_text)
+        data = json.loads(json_text)
     except json.JSONDecodeError:
         return HubResponseDecision(
             should_respond=False,
@@ -201,5 +234,8 @@ Return JSON only.
 
     if not raw_answer:
         return DEFAULT_NO_RESPONSE
+
+    print("Raw decision response:")
+    print(raw_answer)
 
     return _parse_decision_json(raw_answer.strip())
