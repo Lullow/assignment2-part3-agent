@@ -3,7 +3,7 @@ from src.hub.hub_config import HUB_AGENT_NAME
 
 # Maximum length for a message posted to the shared hub.
 # This prevents the agent from posting overly long responses.
-MAX_HUB_RESPONSE_LENGTH = 1500
+MAX_HUB_RESPONSE_LENGTH = 3500
 
 
 # Simple denylist for obviously sensitive content.
