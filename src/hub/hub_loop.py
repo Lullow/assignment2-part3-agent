@@ -82,6 +82,10 @@ FILE_HINTS = [
 STOP_COMMAND_PHRASES = [
     "/stop",
     "/pause",
+    "pause now",
+    "all agents: pause now",
+    "all agents pause",
+    "everyone pause",
     "stop talking",
     "shut up",
     "stop posting",
@@ -90,6 +94,7 @@ STOP_COMMAND_PHRASES = [
     "stop now",
     "sluta prata",
     "sluta skriva",
+    "pausa nu",
 ]
 
 # Remote resume commands.
@@ -138,6 +143,89 @@ def is_resume_command(message: dict) -> bool:
 
     content = message.get("content", "").strip().lower()
     return content in RESUME_COMMANDS
+
+
+MANAGER_SELECTION_HINTS = [
+    "first one that answers",
+    "first one that responds",
+    "first agent to respond",
+    "first one that answers to this message",
+    "first one that answers to this",
+    "first one that responds to this message",
+    "single agent acting as the head",
+    "head of this agentic swe department",
+    "manager in this session",
+]
+
+MANAGER_RESPONSE_HINTS = [
+    "manager claim",
+    "i am the manager",
+    "i am the designated manager",
+    "assume the role of manager",
+    "acting as manager",
+    "communication protocol",
+    "work protocol",
+    "swe hub communication protocol",
+    "i will establish the communication",
+    "do not start working",
+    "roster",
+    "[roster]",
+]
+
+
+def is_manager_selection_message(message: dict) -> bool:
+    """
+    Detect human messages that ask the first responder to become manager.
+    """
+
+    if not is_human_sender(message):
+        return False
+
+    content = message.get("content", "").lower()
+    return any(hint in content for hint in MANAGER_SELECTION_HINTS)
+
+
+def looks_like_manager_response(message: dict) -> bool:
+    """
+    Detect whether another agent already responded like a manager.
+
+    This is intentionally conservative. If another agent already posted a
+    manager claim or full protocol, this agent should not compete.
+    """
+
+    sender = message.get("agent_name", "")
+
+    if sender == HUB_AGENT_NAME:
+        return False
+
+    if is_human_sender(message):
+        return False
+
+    content = message.get("content", "").lower()
+    return any(hint in content for hint in MANAGER_RESPONSE_HINTS)
+
+
+def batch_has_later_manager_response(messages: list[dict], manager_prompt_seq: int | None) -> bool:
+    """
+    Check whether a later message in the same batch already looks like a manager response.
+
+    This prevents the agent from claiming manager after another agent already
+    responded to the same manager-selection prompt.
+    """
+
+    if manager_prompt_seq is None:
+        return False
+
+    for message in messages:
+        seq = get_message_seq(message)
+
+        if seq is None or seq <= manager_prompt_seq:
+            continue
+
+        if looks_like_manager_response(message):
+            return True
+
+    return False
 
 
 def is_direct_mention_for_agent(content: str) -> bool:
@@ -348,6 +436,38 @@ def run_hub_loop() -> None:
             try:
                 # Fetch only messages newer than the latest sequence number we have seen.
                 messages = fetch_messages(since=last_seen)
+
+                # First pass: update last_seen and detect operator controls before any LLM calls.
+                latest_control: str | None = None
+                latest_control_seq = -1
+
+                for message in messages:
+                    seq = get_message_seq(message)
+
+                    if seq is not None:
+                        last_seen = max(last_seen, seq)
+
+                    if seq is None:
+                        continue
+
+                    if is_stop_command(message) and seq > latest_control_seq:
+                        latest_control = "pause"
+                        latest_control_seq = seq
+
+                    if is_resume_command(message) and seq > latest_control_seq:
+                        latest_control = "resume"
+                        latest_control_seq = seq
+
+                if latest_control == "pause":
+                    controls.paused = True
+                    print("Human pause/stop command found in batch. Agent is now paused.")
+                    continue
+
+                if latest_control == "resume":
+                    controls.paused = False
+                    print("Human resume command found in batch. Agent is now resumed.")
+                    continue
+
             except RequestException as error:
                 print(f"Could not fetch hub messages: {error}")
                 time.sleep(HUB_POLL_INTERVAL_SECONDS)
@@ -386,6 +506,19 @@ def run_hub_loop() -> None:
                 if controls.paused:
                     print(f"Agent is paused. Ignoring hub message from {sender}.")
                     continue
+
+                # Manager-selection messages are risky in large multi-agent chats.
+                # Only allow this agent to compete if no later message in the same
+                # batch already looks like a manager claim or protocol response.
+                if is_manager_selection_message(message):
+                    manager_prompt_seq = get_message_seq(message)
+
+                    if batch_has_later_manager_response(messages, manager_prompt_seq):
+                        print(
+                            "Manager selection already has a later manager-like response. "
+                            "Ignoring to avoid duplicate managers."
+                        )
+                        continue
 
                 mentions_group = HUB_ENABLE_GROUP_MENTIONS and is_group_mention(content)
 
