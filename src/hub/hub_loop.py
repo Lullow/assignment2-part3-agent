@@ -77,6 +77,68 @@ FILE_HINTS = [
     "frontend",
 ]
 
+# Hard runtime stop commands.
+# These are handled before the LLM decision gate.
+STOP_COMMAND_PHRASES = [
+    "/stop",
+    "/pause",
+    "stop talking",
+    "shut up",
+    "stop posting",
+    "everyone stop posting",
+    "all agents stop",
+    "stop now",
+    "sluta prata",
+    "sluta skriva",
+]
+
+# Remote resume commands.
+# Prefer exact slash commands to avoid accidental resume from normal project text.
+RESUME_COMMANDS = {
+    "/resume",
+    "/continue",
+    "/start",
+}
+
+
+def is_human_sender(message: dict) -> bool:
+    """
+    Treat human/user messages as operator-level control messages.
+
+    Agent messages should not be able to pause or resume this agent.
+    """
+
+    sender = message.get("agent_name", "").lower()
+    return sender in {"human", "user", "lullo"}
+
+
+def is_stop_command(message: dict) -> bool:
+    """
+    Detect operator stop messages before the LLM decision gate.
+
+    This is a hard runtime control, not a normal chat response.
+    """
+
+    if not is_human_sender(message):
+        return False
+
+    content = message.get("content", "").lower()
+    return any(phrase in content for phrase in STOP_COMMAND_PHRASES)
+
+
+def is_resume_command(message: dict) -> bool:
+    """
+    Detect operator resume messages before the LLM decision gate.
+
+    Resume commands are exact commands to avoid accidental unpausing.
+    """
+
+    if not is_human_sender(message):
+        return False
+
+    content = message.get("content", "").strip().lower()
+    return content in RESUME_COMMANDS
+
 
 def is_direct_mention_for_agent(content: str) -> bool:
     """
@@ -137,6 +199,7 @@ def should_queue_for_manual_approval(message: dict, response_type: str | None) -
         return False
 
     return looks_like_implementation_request(content)
+
 
 def get_message_seq(message: dict) -> int | None:
     """
@@ -231,6 +294,8 @@ def run_hub_loop() -> None:
     4. Use the LLM decision gate to decide whether to respond.
     5. Generate a safe text-only response.
     6. Sanitize before printing or posting.
+
+    Operator stop/resume commands are handled before the LLM decision gate.
     """
 
     validate_hub_config()
@@ -305,6 +370,23 @@ def run_hub_loop() -> None:
                 if not content:
                     continue
 
+                # Operator stop/resume is handled before any LLM calls.
+                if is_stop_command(message):
+                    controls.paused = True
+                    print("Hub stop command received from human. Agent is now paused.")
+                    continue
+
+                if is_resume_command(message):
+                    controls.paused = False
+                    print("Hub resume command received from human. Agent is now resumed.")
+                    continue
+
+                # While paused, the agent still updates last_seen, but does not call the LLM
+                # or post anything. This prevents delayed replies after a stop command.
+                if controls.paused:
+                    print(f"Agent is paused. Ignoring hub message from {sender}.")
+                    continue
+
                 mentions_group = HUB_ENABLE_GROUP_MENTIONS and is_group_mention(content)
 
                 # Keyword intent is only a hint, not the final routing decision.
@@ -318,11 +400,6 @@ def run_hub_loop() -> None:
 
                 if not decision.should_respond:
                     print(f"Ignoring message from {sender}: {decision.reason}")
-                    continue
-
-                # Pause mode keeps the agent online but prevents it from posting.
-                if controls.paused:
-                    print(f"Agent is paused. Ignoring relevant message from {sender}.")
                     continue
 
                 # Safety cap to avoid spamming the hub or using too many LLM calls.
