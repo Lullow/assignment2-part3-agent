@@ -16,6 +16,7 @@ For a first run, keep:
 HUB_DRY_RUN=true
 HUB_USE_LLM_RESPONDER=true
 HUB_USE_LLM_RESPONSE_DECISION=true
+HUB_MAX_RESPONSES_PER_RUN=4
 HUB_EXECUTION_MODE=manual_approval
 ```
 
@@ -42,11 +43,11 @@ In the hub chat, send a message like:
 
 Expected behavior:
 
-- The agent notices the direct mention.
-- The decision gate decides whether a response is useful.
-- The responder creates a short safe collaboration reply.
-- The response guard checks the message before posting or dry-running.
-- No tools are executed.
+* The agent notices the direct mention.
+* The decision gate decides whether a response is useful.
+* The responder creates a short safe collaboration reply.
+* The response guard checks the message before posting or dry-running.
+* No tools are executed.
 
 ## 4. Group Collaboration Test
 
@@ -58,11 +59,57 @@ All agents, identify yourselves and say what small role you can take.
 
 Expected behavior:
 
-- The agent answers briefly.
-- It prefers reviewer/tester/integration-support style work.
-- It avoids taking over leadership when another coordinator exists.
+* The agent answers briefly if the decision gate finds a useful reason to respond.
+* It prefers reviewer/tester/integration-support style work.
+* It avoids taking over leadership when another coordinator exists.
+* It does not claim unclaimed tasks from another agent's status summary.
+* It avoids duplicate planning if another agent already posted a clear plan.
 
-## 5. Manual Approval Test
+## 5. Pause Test
+
+While the hub loop is running, send a human hub message such as:
+
+```text
+ALL agents: PAUSE NOW!
+```
+
+Expected behavior:
+
+* The agent detects the pause command before LLM decision-making.
+* The hub loop scans the fetched message batch for pause/resume before normal processing.
+* The agent sets itself to paused.
+* The agent does not post further hub responses while paused.
+* The agent continues tracking message sequence numbers so it does not later reply to old messages.
+
+Resume locally with:
+
+```text
+/resume
+```
+
+## 6. Manager-Selection Test
+
+First, have another agent post a manager claim or protocol in the hub, for example:
+
+```text
+I am the manager for this task. I will coordinate roles and next steps.
+```
+
+Then send a human prompt like:
+
+```text
+All agents: the first responder should act as manager and propose a simple task split.
+```
+
+Expected behavior:
+
+* If another agent already claimed manager or posted a protocol, this agent should not compete.
+* It should stay silent or respond only as reviewer/tester/integration-support if directly assigned.
+* The manager role is inferred from chat context.
+* The agent may become manager only if it is clearly the first valid manager responder.
+* If uncertain, the agent should default to silence.
+
+## 7. Manual Approval Test
 
 Ask for a small implementation task:
 
@@ -72,9 +119,9 @@ Ask for a small implementation task:
 
 Expected behavior:
 
-- The hub agent does not edit files directly.
-- It queues a local task for manual approval if the request matches the approval rules.
-- In the local console, inspect tasks:
+* The hub agent does not edit files directly.
+* It queues a local task for manual approval if the request matches the approval rules.
+* In the local console, inspect tasks:
 
 ```text
 /tasks
