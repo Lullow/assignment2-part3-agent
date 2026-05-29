@@ -101,6 +101,7 @@ def build_llm_collaboration_response(
 
     This responder does not call tools, execute commands, or edit files.
     It only generates a short text response for the shared hub.
+    The hub loop still decides whether that text is printed or posted.
     """
 
     sender = message.get("agent_name", "unknown-agent")

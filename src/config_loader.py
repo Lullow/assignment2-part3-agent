@@ -11,7 +11,7 @@ def load_system_prompt() -> str:
   """
   Load the system prompt from the config directory.
 
-  The system promp is kept outside the Python code so it can be edited
+  The system prompt is kept outside the Python code so it can be edited
   without changing the agent implementation.
   """
 

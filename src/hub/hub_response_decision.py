@@ -189,6 +189,7 @@ def decide_hub_response(
 
     Hard safety checks should happen before this function in hub_loop.py.
     This function only handles collaboration relevance.
+    It does not post, execute tools, or approve local work.
 
     If HUB_USE_LLM_RESPONSE_DECISION is disabled, the function falls back to
     direct mentions and group/task-like intent handling.

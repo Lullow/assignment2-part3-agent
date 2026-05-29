@@ -115,6 +115,9 @@ def should_queue_for_manual_approval(message: dict, response_type: str | None) -
     """
     Decide whether a hub message should become a local approval task.
 
+    This is the only path from a hub request into the local task queue.
+    The queued task still requires a local `/approve TASK_ID` command.
+
     Rules:
     - only direct messages to this agent
     - only concrete implementation-like requests

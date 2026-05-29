@@ -32,6 +32,9 @@ def start_console_control_thread(
     """
     Start a background thread for local runtime control commands.
 
+    These commands are typed locally in the terminal. They are not exposed
+    through the shared hub.
+
     Supported commands:
     - /status
     - /pause

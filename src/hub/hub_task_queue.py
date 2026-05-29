@@ -59,6 +59,7 @@ class HubTaskQueue:
     In-memory queue for hub tasks that require local approval.
 
     This queue is runtime-only and is cleared when the process stops.
+    Adding a task here does not execute it.
     """
 
     # Pending tasks are kept only in memory, not written to disk.

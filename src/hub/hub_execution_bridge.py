@@ -1,13 +1,12 @@
 import sys
 from pathlib import Path
 
-from src.hub.hub_config import HUB_APPROVED_TASK_RUNNER
-from src.hub.hub_task_queue import QueuedHubTask
 from src.hub.hub_result_report import build_approved_task_report
 from src.hub.hub_config import (
     HUB_APPROVED_TASK_RUNNER,
     HUB_APPROVED_TASK_TOOL_MODE,
 )
+from src.hub.hub_task_queue import QueuedHubTask
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 SRC_DIR = PROJECT_ROOT / "src"
@@ -15,10 +14,10 @@ SRC_DIR = PROJECT_ROOT / "src"
 
 def prepare_task_for_local_agent(task: QueuedHubTask) -> str:
     """
-    Prepare a hub-approved task for a future local SWE-agent bridge.
+    Prepare a hub-approved task for local Part 2 handling.
 
     This function does not execute tools, run bash, edit files, or start
-    the Part 2 agent loop. It only returns the safe execution prompt.
+    the Part 2 agent loop by itself. It only returns the safe execution prompt.
     """
 
     return task.to_execution_prompt()
